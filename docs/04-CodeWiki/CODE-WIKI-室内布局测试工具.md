@@ -320,9 +320,9 @@ sequenceDiagram
 
 ### 9.1 在线访问
 
-项目已部署至 Vercel，可直接在线使用：
+项目已部署至 Vercel（关联 GitHub 仓库 `zpldongxie/room-layout-planner`，push master 自动部署），可直接在线使用：
 
-> **https://room-layout-planner-five.vercel.app/**
+> **https://room-layout-planner-nine.vercel.app/**
 
 ### 9.2 本地运行
 

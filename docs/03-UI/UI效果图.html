@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>室内布局测试工具 - UI效果图</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #e8ecf1; color: #333; padding: 20px; }
+  .header { text-align: center; margin-bottom: 16px; color: #666; font-size: 14px; }
+  .header h1 { color: #333; font-size: 22px; margin-bottom: 4px; }
+  .app { max-width: 1200px; margin: 0 auto; background: #fff; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); display: flex; height: 640px; overflow: hidden; }
+
+  /* 左侧家具面板 */
+  .sidebar { width: 190px; background: #f7f9fc; border-right: 1px solid #e2e8f0; padding: 14px; display: flex; flex-direction: column; }
+  .sidebar-title { font-size: 14px; font-weight: 600; color: #475569; margin-bottom: 12px; }
+  .furniture-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; overflow-y: auto; flex: 1; }
+  .furniture-item { background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 4px; text-align: center; cursor: grab; transition: all 0.15s; }
+  .furniture-item:hover { border-color: #3b82f6; box-shadow: 0 2px 8px rgba(59,130,246,0.2); transform: translateY(-1px); }
+  .furniture-item .icon { font-size: 26px; display: block; margin-bottom: 4px; }
+  .furniture-item .name { font-size: 12px; color: #475569; }
+  .furniture-item .size { font-size: 10px; color: #94a3b8; margin-top: 2px; }
+  .sidebar .tip { margin-top: 12px; font-size: 11px; color: #94a3b8; line-height: 1.5; border-top: 1px dashed #cbd5e1; padding-top: 10px; }
+
+  /* 中间画布 */
+  .canvas-area { flex: 1; display: flex; flex-direction: column; position: relative; }
+  .toolbar { display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: #fff; border-bottom: 1px solid #e2e8f0; flex-wrap: wrap; }
+  .tool-btn { padding: 6px 12px; border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; font-size: 12px; color: #475569; cursor: pointer; transition: all 0.15s; }
+  .tool-btn:hover { border-color: #3b82f6; color: #3b82f6; }
+  .tool-btn.active { background: #3b82f6; color: #fff; border-color: #3b82f6; }
+  .tool-btn.primary { background: #3b82f6; color: #fff; border-color: #3b82f6; }
+  .separator { width: 1px; height: 20px; background: #e2e8f0; }
+  .switch-label { display: flex; align-items: center; gap: 5px; font-size: 12px; color: #475569; cursor: pointer; }
+  .switch { width: 32px; height: 18px; background: #cbd5e1; border-radius: 10px; position: relative; transition: background 0.2s; }
+  .switch.on { background: #3b82f6; }
+  .switch::after { content: ''; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; background: #fff; border-radius: 50%; transition: left 0.2s; }
+  .switch.on::after { left: 16px; }
+
+  .canvas { flex: 1; position: relative; background: #f0f4f8; overflow: hidden; }
+  .canvas .grid-bg { position: absolute; inset: 0; background-image: linear-gradient(#e2e8f0 1px, transparent 1px), linear-gradient(90deg, #e2e8f0 1px, transparent 1px); background-size: 40px 40px; }
+  .canvas .room { position: absolute; border: 3px solid #64748b; background: rgba(255,255,255,0.3); }
+  /* 模拟一个房间：客厅 4m x 3m */
+  .canvas .room.living { left: 80px; top: 60px; width: 320px; height: 240px; }
+  .canvas .room.bedroom { left: 430px; top: 60px; width: 240px; height: 240px; }
+
+  /* 家具模拟 */
+  .furniture { position: absolute; display: flex; align-items: center; justify-content: center; border-radius: 4px; font-size: 11px; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,0.3); box-shadow: 0 2px 6px rgba(0,0,0,0.15); user-select: none; }
+  .furniture.selected { outline: 2px solid #3b82f6; outline-offset: 2px; }
+  .furniture.collide { outline: 2px solid #ef4444; background-color: #ef4444 !important; }
+  .furniture .f-icon { font-size: 18px; margin-right: 3px; }
+  .furniture .f-name { font-size: 10px; }
+  /* 放置示例 */
+  .f-sofa { left: 100px; top: 80px; width: 105px; height: 45px; background: #4a7fb5; }
+  .f-tea-table { left: 150px; top: 140px; width: 60px; height: 30px; background: #8d6e63; }
+  .f-tv { left: 105px; top: 260px; width: 90px; height: 20px; background: #5d4037; }
+  .f-bed { left: 450px; top: 90px; width: 90px; height: 100px; background: #90a4ae; }
+  .f-desk { left: 460px; top: 220px; width: 60px; height: 30px; background: #b39ddb; transform: rotate(-15deg); }
+  .f-dining-table { left: 250px; top: 240px; width: 70px; height: 40px; background: #a1887f; transform: rotate(30deg); }
+  .f-chair { left: 235px; top: 295px; width: 22px; height: 22px; background: #7cb342; }
+  .f-chair2 { left: 300px; top: 255px; width: 22px; height: 22px; background: #7cb342; }
+  .f-study-desk { left: 560px; top: 130px; width: 50px; height: 30px; background: #ffb74d; }
+
+  .rotate-handle { position: absolute; width: 14px; height: 14px; background: #3b82f6; border: 2px solid #fff; border-radius: 50%; top: -20px; left: 50%; transform: translateX(-50%); cursor: grab; box-shadow: 0 1px 4px rgba(0,0,0,0.3); }
+  .rotate-handle::after { content: ''; position: absolute; top: -14px; left: 5px; width: 2px; height: 12px; background: #3b82f6; }
+
+  .status-bar { display: flex; justify-content: space-between; align-items: center; padding: 6px 14px; background: #f8fafc; border-top: 1px solid #e2e8f0; font-size: 11px; color: #94a3b8; }
+  .status-bar .warn { color: #ef4444; }
+
+  /* 右侧属性面板 */
+  .inspector { width: 220px; background: #f7f9fc; border-left: 1px solid #e2e8f0; padding: 14px; overflow-y: auto; }
+  .inspector h3 { font-size: 13px; font-weight: 600; color: #475569; margin-bottom: 12px; }
+  .field { margin-bottom: 12px; }
+  .field label { display: block; font-size: 11px; color: #64748b; margin-bottom: 4px; }
+  .field input { width: 100%; padding: 6px 8px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 12px; }
+  .field .unit { font-size: 10px; color: #94a3b8; }
+  .field-row { display: flex; gap: 8px; }
+  .field-row .field { flex: 1; }
+  .btn-block { width: 100%; padding: 8px; border: none; border-radius: 6px; font-size: 12px; cursor: pointer; margin-top: 4px; }
+  .btn-danger { background: #fef2f2; color: #ef4444; border: 1px solid #fecaca; }
+  .btn-danger:hover { background: #fee2e2; }
+  .btn-copy { background: #eff6ff; color: #3b82f6; border: 1px solid #bfdbfe; }
+  .btn-copy:hover { background: #dbeafe; }
+  .inspector .hint { font-size: 11px; color: #94a3b8; line-height: 1.6; margin-top: 16px; border-top: 1px dashed #cbd5e1; padding-top: 10px; }
+
+  .footer-note { text-align: center; margin-top: 12px; font-size: 12px; color: #94a3b8; }
+  .footer-note b { color: #3b82f6; }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>🏠 室内布局测试工具</h1>
+  <div>UI 效果图（静态示意，非功能版）— 待 CEO 确认后开发</div>
+</div>
+
+<div class="app">
+  <!-- 左侧：家具面板 -->
+  <div class="sidebar">
+    <div class="sidebar-title">🛋️ 家具库</div>
+    <div class="furniture-grid">
+      <div class="furniture-item"><span class="icon">🛋️</span><span class="name">沙发</span><span class="size">2100×900</span></div>
+      <div class="furniture-item"><span class="icon">🟫</span><span class="name">茶几</span><span class="size">1200×600</span></div>
+      <div class="furniture-item"><span class="icon">📺</span><span class="name">电视柜</span><span class="size">1800×400</span></div>
+      <div class="furniture-item"><span class="icon">🍽️</span><span class="name">餐桌</span><span class="size">1400×800</span></div>
+      <div class="furniture-item"><span class="icon">🪑</span><span class="name">餐椅</span><span class="size">450×450</span></div>
+      <div class="furniture-item"><span class="icon">🛏️</span><span class="name">床</span><span class="size">1800×2000</span></div>
+      <div class="furniture-item"><span class="icon">🖥️</span><span class="name">电脑桌</span><span class="size">1200×600</span></div>
+      <div class="furniture-item"><span class="icon">📚</span><span class="name">学习桌</span><span class="size">1000×600</span></div>
+      <div class="furniture-item"><span class="icon">🚪</span><span class="name">衣柜</span><span class="size">1800×600</span></div>
+      <div class="furniture-item"><span class="icon">🧊</span><span class="name">冰箱</span><span class="size">600×650</span></div>
+    </div>
+    <div class="tip">💡 点击家具后拖入画布<br>滚轮缩放 · 空格拖动<br>选中后右侧可改尺寸/角度</div>
+  </div>
+
+  <!-- 中间：画布 -->
+  <div class="canvas-area">
+    <div class="toolbar">
+      <button class="tool-btn active">✏️ 画墙</button>
+      <button class="tool-btn">🖱️ 选择</button>
+      <button class="tool-btn">🔄 旋转</button>
+      <div class="separator"></div>
+      <label class="switch-label"><span class="switch on"></span> 自动吸附</label>
+      <label class="switch-label"><span class="switch"></span> 允许重叠</label>
+      <div class="separator"></div>
+      <button class="tool-btn">模板户型</button>
+      <button class="tool-btn">🗑️ 清空</button>
+      <button class="tool-btn primary">📥 导出 PNG</button>
+      <button class="tool-btn primary">💾 保存/载入</button>
+    </div>
+
+    <div class="canvas">
+      <div class="grid-bg"></div>
+      <div class="room living"><span style="position:absolute; top:4px; left:6px; font-size:11px; color:#64748b;">客厅 4000×3000</span></div>
+      <div class="room bedroom"><span style="position:absolute; top:4px; left:6px; font-size:11px; color:#64748b;">卧室 3000×3000</span></div>
+
+      <!-- 家具示例 -->
+      <div class="furniture f-sofa selected"><span class="f-icon">🛋️</span><span class="f-name">沙发</span><div class="rotate-handle"></div></div>
+      <div class="furniture f-tea-table"><span class="f-icon">🟫</span><span class="f-name">茶几</span></div>
+      <div class="furniture f-tv"><span class="f-icon">📺</span><span class="f-name">电视柜</span></div>
+      <div class="furniture f-bed"><span class="f-icon">🛏️</span><span class="f-name">床</span></div>
+      <div class="furniture f-desk"><span class="f-icon">🖥️</span><span class="f-name">电脑桌</span></div>
+      <div class="furniture f-dining-table"><span class="f-icon">🍽️</span><span class="f-name">餐桌</span></div>
+      <div class="furniture f-chair"><span class="f-icon">🪑</span></div>
+      <div class="furniture f-chair2"><span class="f-icon">🪑</span></div>
+      <div class="furniture f-study-desk"><span class="f-icon">📚</span><span class="f-name">学习桌</span></div>
+      <!-- 碰撞示例 -->
+      <div class="furniture f-study-desk collide" style="left: 250px; top: 150px; width: 50px; height: 30px; background: #ffb74d;"><span class="f-icon">📚</span></div>
+    </div>
+
+    <div class="status-bar">
+      <span>坐标：3200, 1800 mm</span>
+      <span>缩放：1m = 50px</span>
+      <span>家具：9 个</span>
+      <span class="warn">⚠️ 1 处碰撞：学习桌与茶几重叠</span>
+    </div>
+  </div>
+
+  <!-- 右侧：属性面板 -->
+  <div class="inspector">
+    <h3>📐 属性面板</h3>
+    <div class="field"><label>家具类型</label><input value="沙发（三人位）" readonly></div>
+    <div class="field-row">
+      <div class="field"><label>长度 (mm)</label><input value="2100"></div>
+      <div class="field"><label>宽度 (mm)</label><input value="900"></div>
+    </div>
+    <div class="field"><label>旋转角度 (°)</label><input value="0"><span class="unit"> 0-360</span></div>
+    <div class="field"><label>位置 X (mm)</label><input value="2000"></div>
+    <div class="field"><label>位置 Y (mm)</label><input value="1500"></div>
+    <button class="btn-block btn-copy">📋 复制此家具</button>
+    <button class="btn-block btn-danger">🗑️ 删除此家具</button>
+
+    <div class="hint">
+      <b>操作提示</b><br>
+      · 画墙：点击起点 → 点击终点<br>
+      · 移动：选中后拖动家具<br>
+      · 旋转：拖蓝色圆点 / ←→ 键 / 输入角度<br>
+      · 吸附：开启后家具靠墙自动对齐<br>
+      · 碰撞：重叠区域变红提示
+    </div>
+  </div>
+</div>
+
+<div class="footer-note">⚙️ 交互示意：吸附开关、旋转手柄、碰撞红色提示、属性面板均在此图中展示 — <b>待确认</b></div>
+</body>
+</html>

@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>🏠 室内布局测试工具</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -65,12 +65,123 @@
   .btn-copy:hover { background: #dbeafe; }
   .inspector .hint { font-size: 11px; color: #94a3b8; line-height: 1.6; margin-top: 16px; border-top: 1px dashed #cbd5e1; padding-top: 10px; }
   .inspector .empty-msg { font-size: 12px; color: #94a3b8; text-align: center; padding: 20px 0; }
+
+  /* ===== 移动端切换按钮（默认隐藏，移动端显示） ===== */
+  .mobile-toggle { display: none; }
+
+  /* ===== 抽屉遮罩 ===== */
+  .drawer-overlay { display: none; }
+
+  /* ===== 响应式：手机端（≤768px） ===== */
+  @media (max-width: 768px) {
+    html, body { height: 100%; }
+    body { overflow: hidden; }
+
+    /* 三栏改为单栏：只显示画布 */
+    .app { flex-direction: column; }
+
+    /* 侧栏与属性面板变为抽屉 */
+    .sidebar, .inspector {
+      position: fixed;
+      top: 0;
+      bottom: 0;
+      z-index: 1000;
+      width: 80vw;
+      max-width: 320px;
+      transform: translateX(-100%);
+      transition: transform 0.25s ease;
+      box-shadow: 2px 0 12px rgba(0,0,0,0.15);
+    }
+    .sidebar { left: 0; }
+    .inspector { left: auto; right: 0; transform: translateX(100%); width: 88vw; max-width: 360px; }
+
+    .sidebar.open, .inspector.open { transform: translateX(0); }
+
+    .drawer-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.35);
+      z-index: 900;
+    }
+    .drawer-overlay.show { display: block; }
+
+    /* 工具栏：横向滚动 + 较大点击区 */
+    .toolbar {
+      padding: 8px 10px;
+      gap: 6px;
+      overflow-x: auto;
+      overflow-y: hidden;
+      flex-wrap: nowrap;
+      scrollbar-width: none;
+      -webkit-overflow-scrolling: touch;
+    }
+    .toolbar::-webkit-scrollbar { display: none; }
+    .tool-btn {
+      padding: 8px 12px;
+      font-size: 13px;
+      flex-shrink: 0;
+    }
+    .switch-label { flex-shrink: 0; }
+    .separator { flex-shrink: 0; }
+
+    /* 移动端切换按钮显示 */
+    .mobile-toggle {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 8px 12px;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      background: #fff;
+      font-size: 13px;
+      color: #475569;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .mobile-toggle.active { background: #3b82f6; color: #fff; border-color: #3b82f6; }
+
+    /* 状态栏更紧凑 */
+    .status-bar {
+      padding: 6px 10px;
+      font-size: 11px;
+      gap: 8px;
+      overflow-x: auto;
+      flex-wrap: nowrap;
+      scrollbar-width: none;
+    }
+    .status-bar::-webkit-scrollbar { display: none; }
+    .status-bar span { flex-shrink: 0; }
+
+    /* 家具网格：移动端单列更好点 */
+    .furniture-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
+    .furniture-item { padding: 10px 4px; }
+    .furniture-item .icon { font-size: 28px; }
+    .furniture-item .name { font-size: 13px; }
+
+    /* 输入框增大点击区域 */
+    .field input, .field select { padding: 8px 10px; font-size: 13px; }
+    .btn-block { padding: 10px; font-size: 13px; }
+
+    /* 防止 iOS 双击缩放 */
+    .tool-btn, .furniture-item, .switch-label, .mobile-toggle {
+      touch-action: manipulation;
+    }
+    #canvas { touch-action: none; }
+  }
+
+  /* ===== 超小屏（≤380px） ===== */
+  @media (max-width: 380px) {
+    .tool-btn { padding: 7px 10px; font-size: 12px; }
+    .furniture-grid { grid-template-columns: 1fr; }
+  }
 </style>
 </head>
 <body>
+<div class="drawer-overlay" id="drawerOverlay"></div>
 <div class="app">
   <!-- ===== 左侧：家具面板 ===== -->
-  <div class="sidebar">
+  <div class="sidebar" id="sidebar">
     <div class="sidebar-title">🛋️ 家具库</div>
     <div class="furniture-grid" id="furnitureGrid"></div>
     <div class="tip">💡 点击家具添加到画布<br>点击墙体可选中/删除/加门窗<br>画墙自动吸附网格<br>←/→ 键旋转 5° · Delete 删除<br>Shift+拖拽/画墙 = 水平垂直校正<br>Ctrl+Z 撤销 · Ctrl+Y 重做</div>
@@ -79,6 +190,7 @@
   <!-- ===== 中间：画布 ===== -->
   <div class="canvas-area">
     <div class="toolbar">
+      <button class="mobile-toggle" id="toggleSidebarBtn" title="家具库">🛋️</button>
       <button class="tool-btn active" data-tool="select">🖱️ 选择</button>
       <button class="tool-btn" data-tool="wall">✏️ 画墙</button>
       <div class="separator"></div>
@@ -94,6 +206,7 @@
       <button class="tool-btn primary" id="exportPngBtn">📥 导出PNG</button>
       <button class="tool-btn primary" id="exportJsonBtn">💾 导出JSON</button>
       <button class="tool-btn" id="importJsonBtn">📂 载入JSON</button>
+      <button class="mobile-toggle" id="toggleInspectorBtn" title="属性面板">⚙️</button>
       <input type="file" id="fileInput" accept=".json" style="display:none">
     </div>
     <div class="canvas-wrapper" id="canvasWrapper">
@@ -1381,6 +1494,110 @@ function onKeyUp(e) {
 }
 
 // ============================================================
+//  触摸事件（移动端）：单指=鼠标，双指=缩放/平移，双击=闭合房间
+// ============================================================
+let pinchState = null;
+let lastTapTime = 0;
+let lastTapPos = null;
+
+function synthMouse(touch, button) {
+  return {
+    clientX: touch.clientX,
+    clientY: touch.clientY,
+    button: button || 0,
+    preventDefault() {},
+    stopPropagation() {},
+  };
+}
+
+function onTouchStart(e) {
+  if (e.touches.length === 2) {
+    // 双指：先结束可能的单指拖拽
+    if (interaction.mode === 'drag' || interaction.mode === 'rotate') {
+      onMouseUp({ button: 0, preventDefault() {}, stopPropagation() {} });
+    }
+    interaction.mode = 'pan';
+    canvas.classList.add('panning');
+    interaction.dragStart = null;
+    const rect = canvas.getBoundingClientRect();
+    const t0 = e.touches[0], t1 = e.touches[1];
+    pinchState = {
+      startDist: Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY),
+      startScale: viewState.scale,
+      startPanX: viewState.panX,
+      startPanY: viewState.panY,
+      startMidX: (t0.clientX + t1.clientX) / 2 - rect.left,
+      startMidY: (t0.clientY + t1.clientY) / 2 - rect.top,
+    };
+    e.preventDefault();
+    return;
+  }
+  if (e.touches.length === 1) {
+    const t = e.touches[0];
+    const rect = canvas.getBoundingClientRect();
+    const px = t.clientX - rect.left, py = t.clientY - rect.top;
+    // 双击检测（用于画墙模式闭合房间）
+    if (lastTapPos && Date.now() - lastTapTime < 300
+        && Math.hypot(px - lastTapPos.x, py - lastTapPos.y) < 30) {
+      onDblClick({ clientX: t.clientX, clientY: t.clientY, preventDefault() {} });
+      lastTapTime = 0;
+      e.preventDefault();
+      return;
+    }
+    lastTapTime = Date.now();
+    lastTapPos = { x: px, y: py };
+    onMouseDown(synthMouse(t, 0));
+    e.preventDefault();
+  }
+}
+
+function onTouchMove(e) {
+  if (e.touches.length === 2 && pinchState) {
+    const rect = canvas.getBoundingClientRect();
+    const t0 = e.touches[0], t1 = e.touches[1];
+    const newDist = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
+    const newMidX = (t0.clientX + t1.clientX) / 2 - rect.left;
+    const newMidY = (t0.clientY + t1.clientY) / 2 - rect.top;
+    const scaleFactor = newDist / (pinchState.startDist || 1);
+    const newScale = clamp(pinchState.startScale * scaleFactor, 0.1, 10);
+    // 保持起始中点对应的世界坐标不变
+    const worldX = (pinchState.startMidX - pinchState.startPanX) / pinchState.startScale;
+    const worldY = (pinchState.startMidY - pinchState.startPanY) / pinchState.startScale;
+    viewState.scale = newScale;
+    viewState.panX = newMidX - worldX * newScale;
+    viewState.panY = newMidY - worldY * newScale;
+    updateScaleDisplay();
+    render();
+    e.preventDefault();
+    return;
+  }
+  if (e.touches.length === 1) {
+    onMouseMove(synthMouse(e.touches[0], 0));
+    e.preventDefault();
+  }
+}
+
+function onTouchEnd(e) {
+  if (e.touches.length === 0) {
+    if (pinchState) {
+      pinchState = null;
+      interaction.mode = 'idle';
+      canvas.classList.remove('panning');
+      e.preventDefault();
+      return;
+    }
+    onMouseUp({ button: 0, preventDefault() {}, stopPropagation() {} });
+    e.preventDefault();
+  } else if (e.touches.length === 1 && pinchState) {
+    // 从双指变为单指：结束缩放，等待新的单指操作
+    pinchState = null;
+    interaction.mode = 'idle';
+    canvas.classList.remove('panning');
+    e.preventDefault();
+  }
+}
+
+// ============================================================
 //  家具操作
 // ============================================================
 function addFurniture(type) {
@@ -1407,6 +1624,8 @@ function addFurniture(type) {
   render();
   updateUI();
   debouncedSave();
+  // 通知移动端关闭抽屉，让用户看到画布
+  document.dispatchEvent(new Event('selectionChanged'));
 }
 
 function deleteSelected() {
@@ -1805,6 +2024,12 @@ function bindEvents() {
   document.addEventListener('keyup', onKeyUp);
   window.addEventListener('resize', resizeCanvas);
 
+  // 触摸事件（移动端）
+  canvas.addEventListener('touchstart', onTouchStart, { passive: false });
+  canvas.addEventListener('touchmove', onTouchMove, { passive: false });
+  canvas.addEventListener('touchend', onTouchEnd, { passive: false });
+  canvas.addEventListener('touchcancel', onTouchEnd, { passive: false });
+
   // 工具按钮
   document.querySelectorAll('.tool-btn[data-tool]').forEach(btn => {
     btn.addEventListener('click', () => setTool(btn.dataset.tool));
@@ -1861,6 +2086,42 @@ function bindEvents() {
     if (e.target.files[0]) importJSON(e.target.files[0]);
     e.target.value = '';
   });
+
+  // 移动端抽屉切换
+  const sidebar = document.getElementById('sidebar');
+  const inspector = document.getElementById('inspector');
+  const overlay = document.getElementById('drawerOverlay');
+  const toggleSidebarBtn = document.getElementById('toggleSidebarBtn');
+  const toggleInspectorBtn = document.getElementById('toggleInspectorBtn');
+
+  function closeAllDrawers() {
+    sidebar.classList.remove('open');
+    inspector.classList.remove('open');
+    overlay.classList.remove('show');
+    toggleSidebarBtn.classList.remove('active');
+    toggleInspectorBtn.classList.remove('active');
+  }
+  toggleSidebarBtn.addEventListener('click', () => {
+    const willOpen = !sidebar.classList.contains('open');
+    closeAllDrawers();
+    if (willOpen) {
+      sidebar.classList.add('open');
+      overlay.classList.add('show');
+      toggleSidebarBtn.classList.add('active');
+    }
+  });
+  toggleInspectorBtn.addEventListener('click', () => {
+    const willOpen = !inspector.classList.contains('open');
+    closeAllDrawers();
+    if (willOpen) {
+      inspector.classList.add('open');
+      overlay.classList.add('show');
+      toggleInspectorBtn.classList.add('active');
+    }
+  });
+  overlay.addEventListener('click', closeAllDrawers);
+  // 选中家具/墙体后自动关闭抽屉，便于看到画布反馈
+  document.addEventListener('selectionChanged', closeAllDrawers);
 }
 
 // ============================================================

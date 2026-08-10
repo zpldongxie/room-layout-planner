@@ -1,0 +1,1914 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🏠 室内布局测试工具</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #e8ecf1; color: #333; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+  /* ===== 三栏布局 ===== */
+  .app { display: flex; flex: 1; overflow: hidden; }
+
+  /* ===== 左侧家具面板 ===== */
+  .sidebar { width: 190px; background: #f7f9fc; border-right: 1px solid #e2e8f0; padding: 14px; display: flex; flex-direction: column; overflow: hidden; }
+  .sidebar-title { font-size: 14px; font-weight: 600; color: #475569; margin-bottom: 12px; }
+  .furniture-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; overflow-y: auto; flex: 1; }
+  .furniture-item { background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 4px; text-align: center; cursor: grab; transition: all 0.15s; user-select: none; }
+  .furniture-item:hover { border-color: #3b82f6; box-shadow: 0 2px 8px rgba(59,130,246,0.2); transform: translateY(-1px); }
+  .furniture-item:active { cursor: grabbing; }
+  .furniture-item .icon { font-size: 26px; display: block; margin-bottom: 4px; }
+  .furniture-item .name { font-size: 12px; color: #475569; }
+  .furniture-item .size { font-size: 10px; color: #94a3b8; margin-top: 2px; }
+  .sidebar .tip { margin-top: 12px; font-size: 11px; color: #94a3b8; line-height: 1.6; border-top: 1px dashed #cbd5e1; padding-top: 10px; }
+
+  /* ===== 中间画布区 ===== */
+  .canvas-area { flex: 1; display: flex; flex-direction: column; position: relative; overflow: hidden; }
+  .toolbar { display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: #fff; border-bottom: 1px solid #e2e8f0; flex-wrap: wrap; flex-shrink: 0; }
+  .tool-btn { padding: 6px 12px; border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; font-size: 12px; color: #475569; cursor: pointer; transition: all 0.15s; white-space: nowrap; }
+  .tool-btn:hover { border-color: #3b82f6; color: #3b82f6; }
+  .tool-btn.active { background: #3b82f6; color: #fff; border-color: #3b82f6; }
+  .tool-btn.primary { background: #3b82f6; color: #fff; border-color: #3b82f6; }
+  .tool-btn.primary:hover { background: #2563eb; }
+  .separator { width: 1px; height: 20px; background: #e2e8f0; }
+  .switch-label { display: flex; align-items: center; gap: 5px; font-size: 12px; color: #475569; cursor: pointer; user-select: none; }
+  .switch { width: 32px; height: 18px; background: #cbd5e1; border-radius: 10px; position: relative; transition: background 0.2s; }
+  .switch.on { background: #3b82f6; }
+  .switch::after { content: ''; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; background: #fff; border-radius: 50%; transition: left 0.2s; }
+  .switch.on::after { left: 16px; }
+
+  .canvas-wrapper { flex: 1; position: relative; overflow: hidden; background: #f0f4f8; }
+  #canvas { display: block; cursor: default; }
+  #canvas.wall-mode { cursor: crosshair; }
+  #canvas.dragging { cursor: grabbing; }
+  #canvas.panning { cursor: grab; }
+
+  .status-bar { display: flex; justify-content: space-between; align-items: center; padding: 6px 14px; background: #f8fafc; border-top: 1px solid #e2e8f0; font-size: 11px; color: #94a3b8; flex-shrink: 0; gap: 10px; }
+  .status-bar .warn { color: #ef4444; }
+  .status-bar .ok { color: #22c55e; }
+
+  /* ===== 右侧属性面板 ===== */
+  .inspector { width: 220px; background: #f7f9fc; border-left: 1px solid #e2e8f0; padding: 14px; overflow-y: auto; flex-shrink: 0; }
+  .inspector h3 { font-size: 13px; font-weight: 600; color: #475569; margin-bottom: 12px; }
+  .inspector h3.section-title { margin-top: 16px; }
+  .field { margin-bottom: 10px; }
+  .field label { display: block; font-size: 11px; color: #64748b; margin-bottom: 4px; }
+  .field input, .field select { width: 100%; padding: 6px 8px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 12px; }
+  .field .unit { font-size: 10px; color: #94a3b8; }
+  .field-row { display: flex; gap: 8px; }
+  .field-row .field { flex: 1; }
+  .btn-block { width: 100%; padding: 8px; border: none; border-radius: 6px; font-size: 12px; cursor: pointer; margin-top: 4px; }
+  .btn-danger { background: #fef2f2; color: #ef4444; border: 1px solid #fecaca; }
+  .btn-danger:hover { background: #fee2e2; }
+  .btn-copy { background: #eff6ff; color: #3b82f6; border: 1px solid #bfdbfe; }
+  .btn-copy:hover { background: #dbeafe; }
+  .inspector .hint { font-size: 11px; color: #94a3b8; line-height: 1.6; margin-top: 16px; border-top: 1px dashed #cbd5e1; padding-top: 10px; }
+  .inspector .empty-msg { font-size: 12px; color: #94a3b8; text-align: center; padding: 20px 0; }
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- ===== 左侧：家具面板 ===== -->
+  <div class="sidebar">
+    <div class="sidebar-title">🛋️ 家具库</div>
+    <div class="furniture-grid" id="furnitureGrid"></div>
+    <div class="tip">💡 点击家具添加到画布<br>点击墙体可选中/删除/加门窗<br>画墙自动吸附网格<br>←/→ 键旋转 5° · Delete 删除<br>Shift+拖拽/画墙 = 水平垂直校正<br>Ctrl+Z 撤销 · Ctrl+Y 重做</div>
+  </div>
+
+  <!-- ===== 中间：画布 ===== -->
+  <div class="canvas-area">
+    <div class="toolbar">
+      <button class="tool-btn active" data-tool="select">🖱️ 选择</button>
+      <button class="tool-btn" data-tool="wall">✏️ 画墙</button>
+      <div class="separator"></div>
+      <label class="switch-label" id="snapToggle"><span class="switch on" id="snapSwitch"></span> 自动吸附</label>
+      <label class="switch-label" id="collisionToggle"><span class="switch" id="collisionSwitch"></span> 允许重叠</label>
+      <div class="separator"></div>
+      <button class="tool-btn" id="templateBtn">📐 模板户型</button>
+      <button class="tool-btn" id="clearBtn">🗑️ 清空</button>
+      <div class="separator"></div>
+      <button class="tool-btn" id="undoBtn" title="撤销 (Ctrl+Z)">↩️ 撤销</button>
+      <button class="tool-btn" id="redoBtn" title="重做 (Ctrl+Y)">↪️ 重做</button>
+      <div class="separator"></div>
+      <button class="tool-btn primary" id="exportPngBtn">📥 导出PNG</button>
+      <button class="tool-btn primary" id="exportJsonBtn">💾 导出JSON</button>
+      <button class="tool-btn" id="importJsonBtn">📂 载入JSON</button>
+      <input type="file" id="fileInput" accept=".json" style="display:none">
+    </div>
+    <div class="canvas-wrapper" id="canvasWrapper">
+      <canvas id="canvas"></canvas>
+    </div>
+    <div class="status-bar" id="statusBar">
+      <span id="coordDisplay">坐标：0, 0 cm</span>
+      <span id="scaleDisplay">缩放：1m = 50px</span>
+      <span id="countDisplay">家具：0 个</span>
+      <span id="collisionDisplay"></span>
+    </div>
+  </div>
+
+  <!-- ===== 右侧：属性面板 ===== -->
+  <div class="inspector" id="inspector">
+    <h3>📐 属性面板</h3>
+    <div id="inspectorContent">
+      <div class="empty-msg">未选中任何对象<br><br>请在画布中点击家具进行编辑</div>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+// ============================================================
+//  常量定义
+// ============================================================
+const GRID_SIZE = 10;            // 网格大小 cm
+const DEFAULT_WALL_THICKNESS = 12; // 默认墙厚 cm
+const DEFAULT_SCALE = 1.0;       // 默认比例 px/cm (1m=100px)
+const SNAP_THRESHOLD_PX = 15;    // 吸附阈值 px
+const CLOSE_DISTANCE = 15;       // 闭合检测距离 cm
+const MIN_FURNITURE_SIZE = 10;   // 家具最小尺寸 cm
+const MAX_CANVAS_SIZE = 2000;    // 画布逻辑最大尺寸 cm (20m)
+const STORAGE_KEY = 'room-layout-v3';
+const SAVE_DEBOUNCE_MS = 500;
+const ROTATE_STEP = 5;           // 键盘旋转步长 度
+const SHIFT_ROTATE_STEP = 15;    // Shift+方向键旋转步长 度
+
+// 家具类型元数据
+const FURNITURE_TYPES = [
+  { type: 'sofa',        name: '沙发',   defaultWidth: 210, defaultDepth: 90,  color: '#4a7fb5', icon: '🛋️' },
+  { type: 'teaTable',    name: '茶几',   defaultWidth: 120, defaultDepth: 60,  color: '#8d6e63', icon: '🟫' },
+  { type: 'tvCabinet',   name: '电视柜', defaultWidth: 180, defaultDepth: 40,  color: '#5d4037', icon: '📺' },
+  { type: 'diningTable', name: '餐桌',   defaultWidth: 140, defaultDepth: 80,  color: '#a1887f', icon: '🍽️' },
+  { type: 'diningChair', name: '餐椅',   defaultWidth: 45,  defaultDepth: 45,  color: '#7cb342', icon: '🪑' },
+  { type: 'bed',         name: '床',     defaultWidth: 180, defaultDepth: 200, color: '#90a4ae', icon: '🛏️' },
+  { type: 'desk',        name: '电脑桌', defaultWidth: 120, defaultDepth: 60,  color: '#b39ddb', icon: '🖥️' },
+  { type: 'studyDesk',   name: '学习桌', defaultWidth: 100, defaultDepth: 60,  color: '#ffb74d', icon: '📚' },
+];
+
+// 模板户型
+const TEMPLATES = [
+  {
+    name: '一居室',
+    rooms: [{
+      id: 'tpl-r1', name: '一居室',
+      walls: [
+        { id: 'w1', x1: 0, y1: 0, x2: 600, y2: 0, thickness: 12, openings: [{ type: 'door', pos: 0.4, width: 80 }] },
+        { id: 'w2', x1: 600, y1: 0, x2: 600, y2: 400, thickness: 12, openings: [] },
+        { id: 'w3', x1: 600, y1: 400, x2: 0, y2: 400, thickness: 12, openings: [{ type: 'window', pos: 0.3, width: 120 }] },
+        { id: 'w4', x1: 0, y1: 400, x2: 0, y2: 0, thickness: 12, openings: [] },
+        { id: 'w5', x1: 350, y1: 0, x2: 350, y2: 250, thickness: 10, openings: [] },
+        { id: 'w6', x1: 350, y1: 250, x2: 600, y2: 250, thickness: 10, openings: [] },
+      ]
+    }]
+  },
+  {
+    name: '两居室',
+    rooms: [{
+      id: 'tpl-r2', name: '两居室',
+      walls: [
+        { id: 'w1', x1: 0, y1: 0, x2: 800, y2: 0, thickness: 12, openings: [{ type: 'window', pos: 0.5, width: 150 }] },
+        { id: 'w2', x1: 800, y1: 0, x2: 800, y2: 600, thickness: 12, openings: [] },
+        { id: 'w3', x1: 800, y1: 600, x2: 0, y2: 600, thickness: 12, openings: [{ type: 'door', pos: 0.2, width: 80 }] },
+        { id: 'w4', x1: 0, y1: 600, x2: 0, y2: 0, thickness: 12, openings: [] },
+        { id: 'w5', x1: 400, y1: 0, x2: 400, y2: 350, thickness: 10, openings: [{ type: 'door', pos: 0.5, width: 80 }] },
+        { id: 'w6', x1: 400, y1: 350, x2: 800, y2: 350, thickness: 10, openings: [] },
+        { id: 'w7', x1: 0, y1: 350, x2: 400, y2: 350, thickness: 10, openings: [] },
+      ]
+    }]
+  }
+];
+
+// ============================================================
+//  全局状态
+// ============================================================
+const state = {
+  rooms: [],
+  furniture: [],
+  selectedId: null,
+  selectedWallId: null,
+  snapEnabled: true,
+  collisionMode: 'block',  // 'block' | 'warn'
+  gridSize: GRID_SIZE,
+};
+
+const viewState = {
+  scale: DEFAULT_SCALE,
+  panX: 0,
+  panY: 0,
+};
+
+// 交互状态
+const interaction = {
+  tool: 'select',           // 'select' | 'wall'
+  mode: 'idle',             // 'idle' | 'drag' | 'rotate' | 'pan' | 'wallDraw'
+  dragStart: null,          // 拖动起始屏幕坐标
+  dragOffset: null,         // 拖动偏移（世界坐标）
+  lastValidPos: null,       // block 模式下上一个合法位置
+  dragStartWorld: null,     // 拖动起始鼠标世界坐标（Shift 轴锁用）
+  dragStartItemPos: null,   // 拖动起始家具位置（Shift 轴锁用）
+  wallStart: null,          // 画墙起点（世界坐标）
+  wallFirstPoint: null,     // 当前房间第一点（闭合检测用）
+  currentRoomWalls: [],     // 当前正在画的房间的墙
+  mouseWorld: { x: 0, y: 0 }, // 鼠标世界坐标
+  spacePressed: false,
+  shiftPressed: false,
+};
+
+// ============================================================
+//  DOM 元素引用
+// ============================================================
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const canvasWrapper = document.getElementById('canvasWrapper');
+const furnitureGrid = document.getElementById('furnitureGrid');
+const inspectorContent = document.getElementById('inspectorContent');
+const coordDisplay = document.getElementById('coordDisplay');
+const scaleDisplay = document.getElementById('scaleDisplay');
+const countDisplay = document.getElementById('countDisplay');
+const collisionDisplay = document.getElementById('collisionDisplay');
+
+// ============================================================
+//  工具函数
+// ============================================================
+function generateId() {
+  return Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
+}
+
+function clamp(v, min, max) {
+  return Math.max(min, Math.min(max, v));
+}
+
+// ============================================================
+//  Coordinate 模块：坐标转换 (mm ↔ px)
+// ============================================================
+function toScreen(wx, wy) {
+  return {
+    x: wx * viewState.scale + viewState.panX,
+    y: wy * viewState.scale + viewState.panY
+  };
+}
+
+function toWorld(sx, sy) {
+  return {
+    x: (sx - viewState.panX) / viewState.scale,
+    y: (sy - viewState.panY) / viewState.scale
+  };
+}
+
+function getMousePos(e) {
+  const rect = canvas.getBoundingClientRect();
+  return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+}
+
+// ============================================================
+//  Canvas 初始化与 Resize
+// ============================================================
+function resizeCanvas() {
+  const rect = canvasWrapper.getBoundingClientRect();
+  // 布局尚未就绪时延迟重试
+  if (rect.width === 0 || rect.height === 0) {
+    requestAnimationFrame(resizeCanvas);
+    return;
+  }
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  canvas.style.width = rect.width + 'px';
+  canvas.style.height = rect.height + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  render();
+}
+
+function initView() {
+  const rect = canvasWrapper.getBoundingClientRect();
+  viewState.panX = rect.width / 2;
+  viewState.panY = rect.height / 2;
+}
+
+// ============================================================
+//  Renderer 模块
+// ============================================================
+function render() {
+  const rect = canvasWrapper.getBoundingClientRect();
+  ctx.clearRect(0, 0, rect.width, rect.height);
+
+  drawGrid(rect);
+  drawWalls();
+  drawCurrentRoomWalls();
+  drawWallPreview();
+  drawFurniture();
+  drawSelection();
+}
+
+function drawGrid(rect) {
+  const gridPx = state.gridSize * viewState.scale;
+  if (gridPx < 5) return; // 网格太密不画
+
+  const offsetX = viewState.panX % gridPx;
+  const offsetY = viewState.panY % gridPx;
+
+  ctx.strokeStyle = '#e2e8f0';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let x = offsetX; x < rect.width; x += gridPx) {
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, rect.height);
+  }
+  for (let y = offsetY; y < rect.height; y += gridPx) {
+    ctx.moveTo(0, y);
+    ctx.lineTo(rect.width, y);
+  }
+  ctx.stroke();
+
+  // 原点标记
+  const origin = toScreen(0, 0);
+  if (origin.x >= 0 && origin.x <= rect.width && origin.y >= 0 && origin.y <= rect.height) {
+    ctx.strokeStyle = '#94a3b8';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(origin.x - 6, origin.y);
+    ctx.lineTo(origin.x + 6, origin.y);
+    ctx.moveTo(origin.x, origin.y - 6);
+    ctx.lineTo(origin.x, origin.y + 6);
+    ctx.stroke();
+  }
+}
+
+function drawWalls() {
+  for (const room of state.rooms) {
+    drawRoomWalls(room.walls, '#64748b');
+    drawRoomCorners(room.walls);
+    drawRoomLabel(room);
+  }
+  // 选中墙体高亮
+  if (state.selectedWallId) {
+    const found = findWall(state.selectedWallId);
+    if (found) {
+      drawWallWithOpenings(found.wall, '#3b82f6', true);
+    }
+  }
+}
+
+function drawRoomWalls(walls, color) {
+  for (const wall of walls) {
+    drawWallWithOpenings(wall, color, false);
+  }
+}
+
+// 在拐角处画填充方块，消除墙端延伸后的缝隙
+function drawRoomCorners(walls) {
+  for (const wall of walls) {
+    const lineWidth = Math.max(2, wall.thickness * viewState.scale);
+    // 起点和终点的填充圆
+    for (const pt of [{ x: wall.x1, y: wall.y1 }, { x: wall.x2, y: wall.y2 }]) {
+      const s = toScreen(pt.x, pt.y);
+      ctx.fillStyle = '#64748b';
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, lineWidth / 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+}
+
+// 获取墙的视觉延伸端点（沿墙方向延伸 thickness/2，使内侧长度=画线长度）
+function getWallVisualEndpoints(wall) {
+  const dx = wall.x2 - wall.x1;
+  const dy = wall.y2 - wall.y1;
+  const len = Math.hypot(dx, dy);
+  if (len < 0.001) return { x1: wall.x1, y1: wall.y1, x2: wall.x2, y2: wall.y2 };
+  const halfT = wall.thickness / 2;
+  const ux = dx / len;
+  const uy = dy / len;
+  return {
+    x1: wall.x1 - ux * halfT,
+    y1: wall.y1 - uy * halfT,
+    x2: wall.x2 + ux * halfT,
+    y2: wall.y2 + uy * halfT
+  };
+}
+
+// 绘制单堵墙（含门窗开口）
+function drawWallWithOpenings(wall, color, isSelected) {
+  const ext = getWallVisualEndpoints(wall);
+  const s1 = toScreen(ext.x1, ext.y1);
+  const s2 = toScreen(ext.x2, ext.y2);
+  const lineWidth = Math.max(2, wall.thickness * viewState.scale);
+  const wallLen = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1); // 画线长度（内侧长度）
+  const extLen = wallLen + wall.thickness; // 延伸后的中心线长度
+  const openings = wall.openings || [];
+
+  if (openings.length === 0) {
+    // 无开口，直接画整段墙
+    ctx.strokeStyle = color;
+    ctx.lineWidth = lineWidth;
+    ctx.lineCap = 'butt';
+    ctx.beginPath();
+    ctx.moveTo(s1.x, s1.y);
+    ctx.lineTo(s2.x, s2.y);
+    ctx.stroke();
+  } else {
+    // 有开口：按开口位置分段绘制墙体
+    // 开口位置基于画线长度（内侧），需转换为延伸后的比例
+    const gaps = openings.map(op => {
+      const innerStart = op.pos * wallLen - op.width / 2;
+      const innerEnd = op.pos * wallLen + op.width / 2;
+      return {
+        start: clamp((innerStart + wall.thickness / 2) / extLen, 0, 1),
+        end: clamp((innerEnd + wall.thickness / 2) / extLen, 0, 1),
+        type: op.type
+      };
+    });
+    gaps.sort((a, b) => a.start - b.start);
+
+    // 画墙段（开口之间的部分）
+    let cursor = 0;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = lineWidth;
+    ctx.lineCap = 'butt';
+    for (const gap of gaps) {
+      if (gap.start > cursor) {
+        ctx.beginPath();
+        ctx.moveTo(s1.x + (s2.x - s1.x) * cursor, s1.y + (s2.y - s1.y) * cursor);
+        ctx.lineTo(s1.x + (s2.x - s1.x) * gap.start, s1.y + (s2.y - s1.y) * gap.start);
+        ctx.stroke();
+      }
+      cursor = gap.end;
+    }
+    if (cursor < 1) {
+      ctx.beginPath();
+      ctx.moveTo(s1.x + (s2.x - s1.x) * cursor, s1.y + (s2.y - s1.y) * cursor);
+      ctx.lineTo(s2.x, s2.y);
+      ctx.stroke();
+    }
+
+    // 绘制开口符号
+    for (const gap of gaps) {
+      const gapMid = (gap.start + gap.end) / 2;
+      const gapStartX = s1.x + (s2.x - s1.x) * gap.start;
+      const gapStartY = s1.y + (s2.y - s1.y) * gap.start;
+      const gapEndX = s1.x + (s2.x - s1.x) * gap.end;
+      const gapEndY = s1.y + (s2.y - s1.y) * gap.end;
+
+      if (gap.type === 'door') {
+        const radius = Math.hypot(gapEndX - gapStartX, gapEndY - gapStartY);
+        const wallAngle = Math.atan2(s2.y - s1.y, s2.x - s1.x);
+        ctx.strokeStyle = '#f59e0b';
+        ctx.lineWidth = 1.5;
+        // 90度扇形弧线：从墙方向扫到垂直方向（逆时针，与门板同侧）
+        ctx.beginPath();
+        ctx.arc(gapStartX, gapStartY, radius, wallAngle, wallAngle - Math.PI / 2, true);
+        ctx.stroke();
+        // 门板线（半径方向，与弧线终点一致）
+        ctx.beginPath();
+        ctx.moveTo(gapStartX, gapStartY);
+        ctx.lineTo(gapStartX + Math.cos(wallAngle - Math.PI / 2) * radius,
+                   gapStartY + Math.sin(wallAngle - Math.PI / 2) * radius);
+        ctx.stroke();
+      } else {
+        const wallAngle = Math.atan2(s2.y - s1.y, s2.x - s1.x);
+        const perpX = -Math.sin(wallAngle) * lineWidth / 2;
+        const perpY = Math.cos(wallAngle) * lineWidth / 2;
+        ctx.strokeStyle = '#3b82f6';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(gapStartX + perpX * 0.3, gapStartY + perpY * 0.3);
+        ctx.lineTo(gapEndX + perpX * 0.3, gapEndY + perpY * 0.3);
+        ctx.moveTo(gapStartX - perpX * 0.3, gapStartY - perpY * 0.3);
+        ctx.lineTo(gapEndX - perpX * 0.3, gapEndY - perpY * 0.3);
+        ctx.stroke();
+      }
+    }
+  }
+
+  // 选中高亮边框
+  if (isSelected) {
+    ctx.strokeStyle = '#3b82f6';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([4, 3]);
+    ctx.beginPath();
+    ctx.moveTo(s1.x, s1.y);
+    ctx.lineTo(s2.x, s2.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // 墙长标注（显示内侧长度 = 画线长度）
+  if (wallLen > 0) {
+    const midX = (s1.x + s2.x) / 2;
+    const midY = (s1.y + s2.y) / 2;
+    const angle = Math.atan2(s2.y - s1.y, s2.x - s1.x);
+    ctx.save();
+    ctx.translate(midX, midY);
+    ctx.rotate(angle);
+    if (Math.abs(angle) > Math.PI / 2) ctx.rotate(Math.PI);
+    ctx.fillStyle = isSelected ? '#3b82f6' : '#64748b';
+    ctx.font = '11px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(`${Math.round(wallLen)}cm`, 0, -4);
+    ctx.restore();
+  }
+}
+
+function drawRoomLabel(room) {
+  if (room.walls.length < 3) return;
+  // 计算房间中心
+  let cx = 0, cy = 0;
+  for (const w of room.walls) {
+    cx += (w.x1 + w.x2) / 2;
+    cy += (w.y1 + w.y2) / 2;
+  }
+  cx /= room.walls.length;
+  cy /= room.walls.length;
+  const s = toScreen(cx, cy);
+  ctx.fillStyle = 'rgba(100, 116, 139, 0.4)';
+  ctx.font = 'bold 13px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(room.name, s.x, s.y);
+}
+
+function drawCurrentRoomWalls() {
+  if (interaction.currentRoomWalls.length > 0) {
+    drawRoomWalls(interaction.currentRoomWalls, '#3b82f6');
+  }
+}
+
+function drawWallPreview() {
+  if (interaction.tool !== 'wall' || !interaction.wallStart) return;
+  // 网格吸附 + Shift 轴锁预览
+  let endPos = snapToGrid({ x: interaction.mouseWorld.x, y: interaction.mouseWorld.y });
+  if (interaction.shiftPressed) {
+    endPos = applyAxisLock(interaction.wallStart, endPos);
+  }
+  const endX = endPos.x, endY = endPos.y;
+  const s1 = toScreen(interaction.wallStart.x, interaction.wallStart.y);
+  const s2 = toScreen(endX, endY);
+
+  ctx.strokeStyle = '#3b82f6';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([6, 4]);
+  ctx.beginPath();
+  ctx.moveTo(s1.x, s1.y);
+  ctx.lineTo(s2.x, s2.y);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // 长度标注
+  const length = Math.hypot(
+    endX - interaction.wallStart.x,
+    endY - interaction.wallStart.y
+  );
+  ctx.fillStyle = '#3b82f6';
+  ctx.font = '12px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'bottom';
+  ctx.fillText(`${Math.round(length)}cm`, (s1.x + s2.x) / 2, (s1.y + s2.y) / 2 - 6);
+
+  // 闭合检测提示
+  if (interaction.wallFirstPoint) {
+    const dist = Math.hypot(
+      interaction.mouseWorld.x - interaction.wallFirstPoint.x,
+      interaction.mouseWorld.y - interaction.wallFirstPoint.y
+    );
+    if (dist < CLOSE_DISTANCE && interaction.currentRoomWalls.length >= 2) {
+      const fp = toScreen(interaction.wallFirstPoint.x, interaction.wallFirstPoint.y);
+      ctx.strokeStyle = '#22c55e';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(fp.x, fp.y, 10, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.fillStyle = '#22c55e';
+      ctx.font = '11px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('闭合', fp.x, fp.y - 14);
+    }
+  }
+}
+
+// 获取旋转矩形的四个角点（世界坐标）
+function getCorners(item) {
+  const rad = item.rotation * Math.PI / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const hw = item.width / 2;
+  const hd = item.depth / 2;
+  const local = [
+    { x: -hw, y: -hd },
+    { x:  hw, y: -hd },
+    { x:  hw, y:  hd },
+    { x: -hw, y:  hd }
+  ];
+  return local.map(c => ({
+    x: item.x + c.x * cos - c.y * sin,
+    y: item.y + c.x * sin + c.y * cos
+  }));
+}
+
+// 获取碰撞中的家具 ID 集合
+function getCollidingSet() {
+  const colliding = new Set();
+  const items = state.furniture;
+  for (let i = 0; i < items.length; i++) {
+    for (let j = i + 1; j < items.length; j++) {
+      if (satCollide(items[i], items[j])) {
+        colliding.add(items[i].id);
+        colliding.add(items[j].id);
+      }
+    }
+  }
+  // 家具越界检测
+  if (state.rooms.length > 0) {
+    for (const item of items) {
+      if (!isInsideAnyRoom(item)) {
+        colliding.add(item.id);
+      }
+    }
+  }
+  return colliding;
+}
+
+function drawFurniture() {
+  const collidingSet = getCollidingSet();
+  for (const item of state.furniture) {
+    drawFurnitureItem(item, collidingSet.has(item.id));
+  }
+}
+
+function drawFurnitureItem(item, isColliding) {
+  const screen = toScreen(item.x, item.y);
+  const w = item.width * viewState.scale;
+  const h = item.depth * viewState.scale;
+
+  ctx.save();
+  ctx.translate(screen.x, screen.y);
+  ctx.rotate(item.rotation * Math.PI / 180);
+
+  // 填充
+  ctx.fillStyle = isColliding ? '#ef4444' : item.color;
+  ctx.fillRect(-w / 2, -h / 2, w, h);
+
+  // 边框
+  ctx.strokeStyle = isColliding ? '#dc2626' : 'rgba(0,0,0,0.15)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(-w / 2, -h / 2, w, h);
+
+  // 图标和名称
+  if (w > 35 && h > 18) {
+    const meta = FURNITURE_TYPES.find(t => t.type === item.type);
+    const icon = meta ? meta.icon : '';
+    ctx.fillStyle = '#fff';
+    ctx.font = '11px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`${icon} ${item.name}`, 0, 0);
+  }
+
+  ctx.restore();
+}
+
+function drawSelection() {
+  if (!state.selectedId) return;
+  const item = state.furniture.find(f => f.id === state.selectedId);
+  if (!item) return;
+
+  const screen = toScreen(item.x, item.y);
+  const w = item.width * viewState.scale;
+  const h = item.depth * viewState.scale;
+
+  ctx.save();
+  ctx.translate(screen.x, screen.y);
+  ctx.rotate(item.rotation * Math.PI / 180);
+
+  // 选中框
+  ctx.strokeStyle = '#3b82f6';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([4, 3]);
+  ctx.strokeRect(-w / 2 - 3, -h / 2 - 3, w + 6, h + 6);
+  ctx.setLineDash([]);
+
+  // 旋转手柄连线
+  const handleDist = 25;
+  ctx.strokeStyle = '#3b82f6';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(0, -h / 2 - 3);
+  ctx.lineTo(0, -h / 2 - handleDist);
+  ctx.stroke();
+
+  // 旋转手柄圆点
+  ctx.fillStyle = '#3b82f6';
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(0, -h / 2 - handleDist, 6, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+// 旋转手柄屏幕坐标
+function getRotateHandleScreenPos(item) {
+  const screen = toScreen(item.x, item.y);
+  const h = item.depth * viewState.scale;
+  const handleDist = 25;
+  const rad = item.rotation * Math.PI / 180;
+  const lx = 0;
+  const ly = -h / 2 - handleDist;
+  return {
+    x: screen.x + lx * Math.cos(rad) - ly * Math.sin(rad),
+    y: screen.y + lx * Math.sin(rad) + ly * Math.cos(rad)
+  };
+}
+
+// ============================================================
+//  CollisionDetector 模块
+// ============================================================
+
+// AABB 快速粗筛
+function aabbOverlap(a, b) {
+  const ca = getCorners(a);
+  const cb = getCorners(b);
+  const aMinX = Math.min(...ca.map(c => c.x));
+  const aMaxX = Math.max(...ca.map(c => c.x));
+  const aMinY = Math.min(...ca.map(c => c.y));
+  const aMaxY = Math.max(...ca.map(c => c.y));
+  const bMinX = Math.min(...cb.map(c => c.x));
+  const bMaxX = Math.max(...cb.map(c => c.x));
+  const bMinY = Math.min(...cb.map(c => c.y));
+  const bMaxY = Math.max(...cb.map(c => c.y));
+  return !(aMaxX < bMinX || bMaxX < aMinX || aMaxY < bMinY || bMaxY < aMinY);
+}
+
+// SAT 精确碰撞检测
+function satCollide(a, b) {
+  if (!aabbOverlap(a, b)) return false;
+  const cornersA = getCorners(a);
+  const cornersB = getCorners(b);
+  const axes = [...getAxes(cornersA), ...getAxes(cornersB)];
+  for (const axis of axes) {
+    const pa = project(cornersA, axis);
+    const pb = project(cornersB, axis);
+    if (pa.max < pb.min || pb.max < pa.min) return false;
+  }
+  return true;
+}
+
+function getAxes(corners) {
+  const axes = [];
+  for (let i = 0; i < 2; i++) {
+    const p1 = corners[i];
+    const p2 = corners[i + 1];
+    const edge = { x: p2.x - p1.x, y: p2.y - p1.y };
+    const len = Math.hypot(edge.x, edge.y);
+    if (len < 0.0001) continue;
+    axes.push({ x: -edge.y / len, y: edge.x / len });
+  }
+  return axes;
+}
+
+function project(corners, axis) {
+  let min = Infinity, max = -Infinity;
+  for (const c of corners) {
+    const dot = c.x * axis.x + c.y * axis.y;
+    if (dot < min) min = dot;
+    if (dot > max) max = dot;
+  }
+  return { min, max };
+}
+
+// 射线法：点是否在多边形内
+function pointInPolygon(point, polygon) {
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const xi = polygon[i].x, yi = polygon[i].y;
+    const xj = polygon[j].x, yj = polygon[j].y;
+    const intersect = ((yi > point.y) !== (yj > point.y))
+      && (point.x < (xj - xi) * (point.y - yi) / (yj - yi + 0.0001) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+// 家具是否在某个房间内（四角都在房间多边形内）
+function isInsideRoom(room, item) {
+  if (room.walls.length < 3) return true; // 墙不够，不检测
+  const corners = getCorners(item);
+  const polygon = room.walls.map(w => ({ x: w.x1, y: w.y1 }));
+  // 确保多边形闭合：最后一个点的下一点应该是第一个点
+  return corners.every(c => pointInPolygon(c, polygon));
+}
+
+function isInsideAnyRoom(item) {
+  if (state.rooms.length === 0) return true;
+  for (const room of state.rooms) {
+    if (isInsideRoom(room, item)) return true;
+  }
+  return false;
+}
+
+// ============================================================
+//  SnapEngine 模块
+// ============================================================
+function computeSnap(item) {
+  if (!state.snapEnabled) return { dx: 0, dy: 0 };
+
+  const threshold = SNAP_THRESHOLD_PX / viewState.scale; // mm
+  let bestDx = 0, bestDy = 0;
+  let bestXDist = threshold + 1, bestYDist = threshold + 1;
+  let bestXPri = 0, bestYPri = 0;
+
+  // 家具的参考坐标（中心 + 角点）
+  const corners = getCorners(item);
+  const xRefs = [item.x, ...corners.map(c => c.x)];
+  const yRefs = [item.y, ...corners.map(c => c.y)];
+
+  // 候选吸附线
+  const xLines = [];
+  const yLines = [];
+
+  // 墙体吸附（优先级 3）
+  for (const room of state.rooms) {
+    for (const w of room.walls) {
+      xLines.push({ val: w.x1, pri: 3 });
+      xLines.push({ val: w.x2, pri: 3 });
+      yLines.push({ val: w.y1, pri: 3 });
+      yLines.push({ val: w.y2, pri: 3 });
+    }
+  }
+  // 当前正在画的墙也参与吸附
+  for (const w of interaction.currentRoomWalls) {
+    xLines.push({ val: w.x1, pri: 3 });
+    xLines.push({ val: w.x2, pri: 3 });
+    yLines.push({ val: w.y1, pri: 3 });
+    yLines.push({ val: w.y2, pri: 3 });
+  }
+
+  // 家具间吸附（优先级 2）
+  for (const other of state.furniture) {
+    if (other.id === item.id) continue;
+    const oc = getCorners(other);
+    for (const c of oc) {
+      xLines.push({ val: c.x, pri: 2 });
+      yLines.push({ val: c.y, pri: 2 });
+    }
+    xLines.push({ val: other.x, pri: 2 });
+    yLines.push({ val: other.y, pri: 2 });
+  }
+
+  // 查找最佳 X 吸附
+  for (const line of xLines) {
+    for (const ref of xRefs) {
+      const dist = Math.abs(ref - line.val);
+      if (dist < threshold && (line.pri > bestXPri || (line.pri === bestXPri && dist < bestXDist))) {
+        bestXDist = dist;
+        bestXPri = line.pri;
+        bestDx = line.val - ref;
+      }
+    }
+  }
+
+  // 查找最佳 Y 吸附
+  for (const line of yLines) {
+    for (const ref of yRefs) {
+      const dist = Math.abs(ref - line.val);
+      if (dist < threshold && (line.pri > bestYPri || (line.pri === bestYPri && dist < bestYDist))) {
+        bestYDist = dist;
+        bestYPri = line.pri;
+        bestDy = line.val - ref;
+      }
+    }
+  }
+
+  // 网格吸附（优先级 1，最低，仅当无更高优先级吸附时）
+  if (bestXPri < 1) {
+    const gridX = Math.round(item.x / state.gridSize) * state.gridSize;
+    const dx = gridX - item.x;
+    if (Math.abs(dx) < threshold) bestDx = dx;
+  }
+  if (bestYPri < 1) {
+    const gridY = Math.round(item.y / state.gridSize) * state.gridSize;
+    const dy = gridY - item.y;
+    if (Math.abs(dy) < threshold) bestDy = dy;
+  }
+
+  return { dx: bestDx, dy: bestDy };
+}
+
+// ============================================================
+//  交互处理：鼠标 / 键盘
+// ============================================================
+
+// 点击检测：判断鼠标是否命中家具
+function hitTestFurniture(sx, sy) {
+  const world = toWorld(sx, sy);
+  for (let i = state.furniture.length - 1; i >= 0; i--) {
+    const item = state.furniture[i];
+    const rad = -item.rotation * Math.PI / 180;
+    const dx = world.x - item.x;
+    const dy = world.y - item.y;
+    const lx = dx * Math.cos(rad) - dy * Math.sin(rad);
+    const ly = dx * Math.sin(rad) + dy * Math.cos(rad);
+    if (Math.abs(lx) <= item.width / 2 && Math.abs(ly) <= item.depth / 2) {
+      return item;
+    }
+  }
+  return null;
+}
+
+// 判断鼠标是否命中旋转手柄
+function hitTestRotateHandle(sx, sy) {
+  if (!state.selectedId) return false;
+  const item = state.furniture.find(f => f.id === state.selectedId);
+  if (!item) return false;
+  const handle = getRotateHandleScreenPos(item);
+  return Math.hypot(sx - handle.x, sy - handle.y) < 10;
+}
+
+// Shift 轴锁：将终点校正为水平或垂直（相对起点）
+function applyAxisLock(start, end) {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    return { x: end.x, y: start.y };
+  } else {
+    return { x: start.x, y: end.y };
+  }
+}
+
+// ============================================================
+//  Wall 模块：墙体内侧长度、选中、门窗开口
+// ============================================================
+
+// 计算墙的内侧长度（扣除墙厚，即用户画线时的原始长度）
+function getWallInnerLength(wall) {
+  return Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
+}
+
+// 创建墙：存储用户画线的原始坐标（内侧端点），渲染时再视觉延伸
+function createWall(x1, y1, x2, y2, thickness) {
+  return {
+    id: generateId(),
+    x1, y1, x2, y2,
+    thickness,
+    openings: []
+  };
+}
+
+// 点到线段距离（世界坐标）
+function distPointToSegment(px, py, x1, y1, x2, y2) {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq < 0.001) return Math.hypot(px - x1, py - y1);
+  let t = ((px - x1) * dx + (py - y1) * dy) / lenSq;
+  t = clamp(t, 0, 1);
+  const cx = x1 + t * dx;
+  const cy = y1 + t * dy;
+  return Math.hypot(px - cx, py - cy);
+}
+
+// 点击测试：判断鼠标是否命中某堵墙（距离 < 阈值）
+const WALL_HIT_THRESHOLD_CM = 15;
+function hitTestWall(sx, sy) {
+  const world = toWorld(sx, sy);
+  let bestWall = null;
+  let bestDist = WALL_HIT_THRESHOLD_CM;
+  for (const room of state.rooms) {
+    for (const wall of room.walls) {
+      const dist = distPointToSegment(world.x, world.y, wall.x1, wall.y1, wall.x2, wall.y2);
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestWall = wall;
+      }
+    }
+  }
+  return bestWall;
+}
+
+// 查找墙体所属的房间和墙本身
+function findWall(wallId) {
+  for (const room of state.rooms) {
+    const wall = room.walls.find(w => w.id === wallId);
+    if (wall) return { room, wall };
+  }
+  return null;
+}
+
+// 删除选中墙体
+function deleteSelectedWall() {
+  if (!state.selectedWallId) return;
+  pushUndo();
+  for (const room of state.rooms) {
+    room.walls = room.walls.filter(w => w.id !== state.selectedWallId);
+  }
+  // 清理空房间
+  state.rooms = state.rooms.filter(r => r.walls.length > 0);
+  state.selectedWallId = null;
+  render();
+  updateUI();
+  debouncedSave();
+}
+
+// 添加门窗开口
+function addOpening(type) {
+  if (!state.selectedWallId) return;
+  const found = findWall(state.selectedWallId);
+  if (!found) return;
+  pushUndo();
+  const { wall } = found;
+  const defaultWidth = type === 'door' ? 80 : 120;
+  wall.openings = wall.openings || [];
+  wall.openings.push({ type, pos: 0.5, width: defaultWidth });
+  render();
+  updateUI();
+  debouncedSave();
+}
+
+// 删除门窗开口
+function deleteOpening(index) {
+  if (!state.selectedWallId) return;
+  const found = findWall(state.selectedWallId);
+  if (!found) return;
+  pushUndo();
+  found.wall.openings.splice(index, 1);
+  render();
+  updateUI();
+  debouncedSave();
+}
+
+function onMouseDown(e) {
+  const pos = getMousePos(e);
+  interaction.mouseWorld = toWorld(pos.x, pos.y);
+
+  // 中键或空格+左键 → 平移
+  if (e.button === 1 || (e.button === 0 && interaction.spacePressed)) {
+    interaction.mode = 'pan';
+    interaction.dragStart = pos;
+    canvas.classList.add('panning');
+    e.preventDefault();
+    return;
+  }
+
+  if (e.button !== 0) return;
+
+  if (interaction.tool === 'wall') {
+    handleWallMouseDown();
+  } else {
+    handleSelectMouseDown(pos);
+  }
+}
+
+function snapToGrid(wp) {
+  if (!state.snapEnabled) return wp;
+  return {
+    x: Math.round(wp.x / state.gridSize) * state.gridSize,
+    y: Math.round(wp.y / state.gridSize) * state.gridSize
+  };
+}
+
+function handleWallMouseDown() {
+  let rawWorld = { x: interaction.mouseWorld.x, y: interaction.mouseWorld.y };
+  let wp = snapToGrid(rawWorld);
+
+  // 闭合检测（同时检查原始坐标和吸附后坐标）
+  if (interaction.wallFirstPoint && interaction.currentRoomWalls.length >= 2) {
+    const rawDist = Math.hypot(rawWorld.x - interaction.wallFirstPoint.x, rawWorld.y - interaction.wallFirstPoint.y);
+    const snappedDist = Math.hypot(wp.x - interaction.wallFirstPoint.x, wp.y - interaction.wallFirstPoint.y);
+    if (rawDist < CLOSE_DISTANCE || snappedDist < CLOSE_DISTANCE) {
+      closeRoom();
+      return;
+    }
+  }
+
+  // Shift 轴锁：校正为水平/垂直
+  if (interaction.wallStart && interaction.shiftPressed) {
+    wp = applyAxisLock(interaction.wallStart, wp);
+  }
+
+  if (interaction.wallStart) {
+    // 生成一段墙
+    const wall = createWall(interaction.wallStart.x, interaction.wallStart.y, wp.x, wp.y, DEFAULT_WALL_THICKNESS);
+    interaction.currentRoomWalls.push(wall);
+    interaction.wallStart = wp;
+  } else {
+    // 开始画墙
+    interaction.wallStart = wp;
+    interaction.wallFirstPoint = wp;
+  }
+  render();
+}
+
+function closeRoom() {
+  // 添加闭合墙（从最后一点回到第一点）
+  if (interaction.wallStart && interaction.wallFirstPoint && interaction.currentRoomWalls.length >= 2) {
+    const closingWall = createWall(
+      interaction.wallStart.x, interaction.wallStart.y,
+      interaction.wallFirstPoint.x, interaction.wallFirstPoint.y,
+      DEFAULT_WALL_THICKNESS
+    );
+    interaction.currentRoomWalls.push(closingWall);
+  }
+  if (interaction.currentRoomWalls.length >= 3) {
+    pushUndo();
+    const room = {
+      id: generateId(),
+      name: '房间' + (state.rooms.length + 1),
+      walls: [...interaction.currentRoomWalls]
+    };
+    state.rooms.push(room);
+    debouncedSave();
+  }
+  interaction.wallStart = null;
+  interaction.wallFirstPoint = null;
+  interaction.currentRoomWalls = [];
+  setTool('select');
+  render();
+  updateUI();
+}
+
+function handleSelectMouseDown(pos) {
+  // 旋转手柄
+  if (hitTestRotateHandle(pos.x, pos.y)) {
+    interaction.mode = 'rotate';
+    return;
+  }
+
+  // 先测家具（家具在上层）
+  const item = hitTestFurniture(pos.x, pos.y);
+  if (item) {
+    state.selectedId = item.id;
+    state.selectedWallId = null;
+    interaction.mode = 'drag';
+    interaction.lastValidPos = { x: item.x, y: item.y };
+    interaction.dragStartWorld = { x: interaction.mouseWorld.x, y: interaction.mouseWorld.y };
+    interaction.dragStartItemPos = { x: item.x, y: item.y };
+    canvas.classList.add('dragging');
+    updateUI();
+    render();
+    return;
+  }
+
+  // 再测墙体
+  const wall = hitTestWall(pos.x, pos.y);
+  if (wall) {
+    state.selectedWallId = wall.id;
+    state.selectedId = null;
+    updateUI();
+    render();
+    return;
+  }
+
+  // 点击空白：取消所有选中
+  state.selectedId = null;
+  state.selectedWallId = null;
+  updateUI();
+  render();
+}
+
+function onMouseMove(e) {
+  const pos = getMousePos(e);
+  interaction.mouseWorld = toWorld(pos.x, pos.y);
+  coordDisplay.textContent = `坐标：${Math.round(interaction.mouseWorld.x)}, ${Math.round(interaction.mouseWorld.y)} cm`;
+
+  if (interaction.mode === 'pan') {
+    const dx = pos.x - interaction.dragStart.x;
+    const dy = pos.y - interaction.dragStart.y;
+    viewState.panX += dx;
+    viewState.panY += dy;
+    interaction.dragStart = pos;
+    render();
+    return;
+  }
+
+  if (interaction.mode === 'drag' && state.selectedId) {
+    const item = state.furniture.find(f => f.id === state.selectedId);
+    if (!item) return;
+    // Shift 轴锁：约束为水平或垂直移动
+    if (interaction.shiftPressed && interaction.dragStartWorld && interaction.dragStartItemPos) {
+      const dx = interaction.mouseWorld.x - interaction.dragStartWorld.x;
+      const dy = interaction.mouseWorld.y - interaction.dragStartWorld.y;
+      if (Math.abs(dx) >= Math.abs(dy)) {
+        item.x = interaction.dragStartItemPos.x + dx;
+        item.y = interaction.dragStartItemPos.y;
+      } else {
+        item.x = interaction.dragStartItemPos.x;
+        item.y = interaction.dragStartItemPos.y + dy;
+      }
+    } else {
+      item.x = interaction.mouseWorld.x;
+      item.y = interaction.mouseWorld.y;
+    }
+    // 吸附
+    const snap = computeSnap(item);
+    item.x += snap.dx;
+    item.y += snap.dy;
+    // 碰撞检测
+    const colliding = checkItemCollision(item);
+    if (colliding && state.collisionMode === 'block') {
+      // 不更新 lastValidPos，松手时回弹
+    } else {
+      interaction.lastValidPos = { x: item.x, y: item.y };
+    }
+    updateStatusBar();
+    render();
+    return;
+  }
+
+  if (interaction.mode === 'rotate' && state.selectedId) {
+    const item = state.furniture.find(f => f.id === state.selectedId);
+    if (!item) return;
+    const itemScreen = toScreen(item.x, item.y);
+    const angle = Math.atan2(pos.y - itemScreen.y, pos.x - itemScreen.x) * 180 / Math.PI;
+    // 手柄在上方（-90°方向），加 90 偏移
+    let rot = (angle + 90 + 360) % 360;
+    // Shift 吸附到 0/90/180/270
+    if (interaction.shiftPressed) {
+      rot = Math.round(rot / 90) * 90 % 360;
+    }
+    item.rotation = Math.round(rot);
+    updateInspector();
+    render();
+    return;
+  }
+
+  if (interaction.tool === 'wall' && interaction.wallStart) {
+    render();
+  }
+}
+
+function checkItemCollision(item) {
+  // 家具↔家具
+  for (const other of state.furniture) {
+    if (other.id === item.id) continue;
+    if (satCollide(item, other)) return true;
+  }
+  // 家具↔房间越界
+  if (state.rooms.length > 0 && !isInsideAnyRoom(item)) return true;
+  return false;
+}
+
+function onMouseUp(e) {
+  if (interaction.mode === 'drag' && state.selectedId) {
+    const item = state.furniture.find(f => f.id === state.selectedId);
+    if (item && interaction.lastValidPos) {
+      // block 模式下如果当前碰撞，回弹
+      if (checkItemCollision(item) && state.collisionMode === 'block') {
+        item.x = interaction.lastValidPos.x;
+        item.y = interaction.lastValidPos.y;
+      }
+    }
+    canvas.classList.remove('dragging');
+    pushUndo();
+    debouncedSave();
+  }
+  if (interaction.mode === 'rotate') {
+    pushUndo();
+    debouncedSave();
+  }
+  if (interaction.mode === 'pan') {
+    canvas.classList.remove('panning');
+  }
+  interaction.mode = 'idle';
+  render();
+  updateUI();
+}
+
+function onWheel(e) {
+  e.preventDefault();
+  const pos = getMousePos(e);
+  const worldBefore = toWorld(pos.x, pos.y);
+  const factor = e.deltaY < 0 ? 1.08 : 1 / 1.08;
+  viewState.scale = clamp(viewState.scale * factor, 0.1, 10);
+  // 保持鼠标位置不变
+  viewState.panX = pos.x - worldBefore.x * viewState.scale;
+  viewState.panY = pos.y - worldBefore.y * viewState.scale;
+  updateScaleDisplay();
+  render();
+}
+
+function onDblClick(e) {
+  if (interaction.tool === 'wall' && interaction.currentRoomWalls.length >= 2) {
+    closeRoom();
+  }
+}
+
+function onKeyDown(e) {
+  // Ctrl+Z 撤销 / Ctrl+Shift+Z 或 Ctrl+Y 重做
+  if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+    if (e.shiftKey) redo(); else undo();
+    e.preventDefault();
+    return;
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
+    redo();
+    e.preventDefault();
+    return;
+  }
+  if (e.code === 'Space') {
+    interaction.spacePressed = true;
+    canvas.style.cursor = 'grab';
+    e.preventDefault();
+    return;
+  }
+  if (e.key === 'Shift') {
+    interaction.shiftPressed = true;
+    if (interaction.tool === 'wall' && interaction.wallStart) render();
+    return;
+  }
+  if (e.key === 'Escape') {
+    state.selectedWallId = null;
+    if (interaction.tool === 'wall') {
+      if (interaction.currentRoomWalls.length >= 3) {
+        closeRoom();
+      } else {
+        interaction.wallStart = null;
+        interaction.wallFirstPoint = null;
+        interaction.currentRoomWalls = [];
+        setTool('select');
+      }
+    }
+    render();
+    updateUI();
+    return;
+  }
+  // 删除选中墙体
+  if ((e.key === 'Delete' || e.key === 'Backspace') && state.selectedWallId && !state.selectedId) {
+    deleteSelectedWall();
+    e.preventDefault();
+    return;
+  }
+  if (!state.selectedId) return;
+  const item = state.furniture.find(f => f.id === state.selectedId);
+  if (!item) return;
+
+  if (e.key === 'ArrowLeft') {
+    pushUndo();
+    const step = interaction.shiftPressed ? SHIFT_ROTATE_STEP : ROTATE_STEP;
+    item.rotation = (item.rotation - step + 360) % 360;
+    updateInspector();
+    render();
+    debouncedSave();
+    e.preventDefault();
+  } else if (e.key === 'ArrowRight') {
+    pushUndo();
+    const step = interaction.shiftPressed ? SHIFT_ROTATE_STEP : ROTATE_STEP;
+    item.rotation = (item.rotation + step) % 360;
+    updateInspector();
+    render();
+    debouncedSave();
+    e.preventDefault();
+  } else if (e.key === 'Delete' || e.key === 'Backspace') {
+    deleteSelected();
+    e.preventDefault();
+  } else if (e.key === 'd' && (e.ctrlKey || e.metaKey)) {
+    copySelected();
+    e.preventDefault();
+  }
+}
+
+function onKeyUp(e) {
+  if (e.code === 'Space') {
+    interaction.spacePressed = false;
+    canvas.style.cursor = interaction.tool === 'wall' ? 'crosshair' : 'default';
+  }
+  if (e.key === 'Shift') {
+    interaction.shiftPressed = false;
+    if (interaction.tool === 'wall' && interaction.wallStart) render();
+  }
+}
+
+// ============================================================
+//  家具操作
+// ============================================================
+function addFurniture(type) {
+  const meta = FURNITURE_TYPES.find(t => t.type === type);
+  if (!meta) return;
+  pushUndo();
+  // 在视口中心创建
+  const rect = canvasWrapper.getBoundingClientRect();
+  const center = toWorld(rect.width / 2, rect.height / 2);
+  const item = {
+    id: generateId(),
+    type: meta.type,
+    name: meta.name,
+    width: meta.defaultWidth,
+    depth: meta.defaultDepth,
+    x: center.x,
+    y: center.y,
+    rotation: 0,
+    color: meta.color
+  };
+  state.furniture.push(item);
+  state.selectedId = item.id;
+  setTool('select');
+  render();
+  updateUI();
+  debouncedSave();
+}
+
+function deleteSelected() {
+  if (!state.selectedId) return;
+  pushUndo();
+  state.furniture = state.furniture.filter(f => f.id !== state.selectedId);
+  state.selectedId = null;
+  render();
+  updateUI();
+  debouncedSave();
+}
+
+function copySelected() {
+  if (!state.selectedId) return;
+  pushUndo();
+  const item = state.furniture.find(f => f.id === state.selectedId);
+  if (!item) return;
+  const copy = {
+    ...item,
+    id: generateId(),
+    x: item.x + 20,
+    y: item.y + 20
+  };
+  state.furniture.push(copy);
+  state.selectedId = copy.id;
+  render();
+  updateUI();
+  debouncedSave();
+}
+
+// ============================================================
+//  工具切换
+// ============================================================
+function setTool(tool) {
+  interaction.tool = tool;
+  document.querySelectorAll('.tool-btn[data-tool]').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tool === tool);
+  });
+  canvas.classList.toggle('wall-mode', tool === 'wall');
+  if (tool !== 'wall') {
+    interaction.wallStart = null;
+    interaction.wallFirstPoint = null;
+    // 未闭合的墙也保存为房间
+    if (interaction.currentRoomWalls.length >= 3) {
+      closeRoom();
+    } else {
+      interaction.currentRoomWalls = [];
+    }
+    render();
+  }
+}
+
+// ============================================================
+//  UI 渲染
+// ============================================================
+function renderFurniturePanel() {
+  furnitureGrid.innerHTML = FURNITURE_TYPES.map(t => `
+    <div class="furniture-item" onclick="addFurniture('${t.type}')">
+      <span class="icon">${t.icon}</span>
+      <span class="name">${t.name}</span>
+      <span class="size">${t.defaultWidth}×${t.defaultDepth}</span>
+    </div>
+  `).join('');
+}
+
+function updateInspector() {
+  // 选中墙体时显示墙体属性
+  if (!state.selectedId && state.selectedWallId) {
+    const found = findWall(state.selectedWallId);
+    if (!found) { state.selectedWallId = null; return; }
+    const { wall, room } = found;
+    const innerLen = Math.round(getWallInnerLength(wall));
+    const openings = wall.openings || [];
+
+    let openingsHtml = '';
+    if (openings.length > 0) {
+      openingsHtml = openings.map((op, i) => `
+        <div class="field-row" style="align-items:center; margin-bottom:6px;">
+          <span style="font-size:12px; flex:1;">${op.type === 'door' ? '🚪 门' : '🪟 窗'} ${Math.round(op.width)}cm @ ${Math.round(op.pos * 100)}%</span>
+          <button class="tool-btn" style="padding:2px 8px; font-size:11px;" onclick="deleteOpening(${i})">✕</button>
+        </div>
+      `).join('');
+    }
+
+    inspectorContent.innerHTML = `
+      <h3 class="section-title">🧱 墙体属性</h3>
+      <div class="field"><label>所属房间</label><input value="${room.name}" readonly></div>
+      <div class="field"><label>内侧长度 (cm)</label><input value="${innerLen}" readonly></div>
+      <div class="field"><label>墙厚 (cm)</label><input type="number" id="wallThicknessInput" value="${wall.thickness}" min="5" max="40"></div>
+      <h3 class="section-title">🚪 门窗开口</h3>
+      ${openingsHtml || '<div class="empty-msg" style="padding:8px 0;">暂无开口</div>'}
+      <button class="btn-block btn-copy" id="addDoorBtn" style="margin-top:4px;">🚪 添加门</button>
+      <button class="btn-block btn-copy" id="addWindowBtn" style="margin-top:4px;">🪟 添加窗</button>
+      <button class="btn-block btn-danger" id="deleteWallBtn" style="margin-top:8px;">🗑️ 删除此墙体</button>
+      <div class="hint">
+        <b>墙体操作</b><br>
+        · 点击墙体选中 · Delete 删除<br>
+        · 选中后可加门窗、改墙厚<br>
+        · 画墙时网格自动吸附
+      </div>`;
+
+    document.getElementById('wallThicknessInput').addEventListener('change', e => {
+      pushUndo();
+      wall.thickness = clamp(parseFloat(e.target.value) || 12, 5, 40);
+      render(); debouncedSave();
+    });
+    document.getElementById('addDoorBtn').addEventListener('click', () => addOpening('door'));
+    document.getElementById('addWindowBtn').addEventListener('click', () => addOpening('window'));
+    document.getElementById('deleteWallBtn').addEventListener('click', deleteSelectedWall);
+    return;
+  }
+
+  if (!state.selectedId) {
+    inspectorContent.innerHTML = `
+      <div class="empty-msg">未选中任何对象<br><br>点击家具或墙体进行编辑</div>
+      <h3 class="section-title">⚙️ 全局设置</h3>
+      <div class="field">
+        <label>吸附阈值 (px)</label>
+        <input type="number" id="snapThresholdInput" value="${SNAP_THRESHOLD_PX}" min="0" max="50">
+      </div>
+      <div class="hint">
+        <b>操作提示</b><br>
+        · 画墙：选画墙工具 → 点击起点 → 点击终点<br>
+        · 画墙时自动吸附网格（开启吸附时）<br>
+        · 闭合：终点靠近起点（绿色圈）或双击<br>
+        · 选中墙体：点击墙体 → Delete 删除<br>
+        · 选中墙体后可加门窗开口<br>
+        · 移动：选中后拖动家具<br>
+        · 旋转：拖蓝色圆点 / ←→键 / 输入角度<br>
+        · Shift+画墙/拖拽 = 水平垂直校正<br>
+        · Shift+旋转 = 吸附 90° · Shift+←→ = 15°步进<br>
+        · 缩放：滚轮 · 平移：空格+拖动<br>
+        · 删除：Delete · 复制：Ctrl+D<br>
+        · 撤销：Ctrl+Z · 重做：Ctrl+Y
+      </div>`;
+    return;
+  }
+
+  const item = state.furniture.find(f => f.id === state.selectedId);
+  if (!item) return;
+
+  inspectorContent.innerHTML = `
+    <div class="field"><label>家具类型</label><input value="${item.name}" readonly></div>
+    <div class="field-row">
+      <div class="field"><label>长度 (cm)</label><input type="number" id="widthInput" value="${Math.round(item.width)}" min="${MIN_FURNITURE_SIZE}"></div>
+      <div class="field"><label>宽度 (cm)</label><input type="number" id="depthInput" value="${Math.round(item.depth)}" min="${MIN_FURNITURE_SIZE}"></div>
+    </div>
+    <div class="field"><label>旋转角度 (°)</label><input type="number" id="rotationInput" value="${Math.round(item.rotation)}" min="0" max="360"><span class="unit"> 0-360</span></div>
+    <div class="field-row">
+      <div class="field"><label>位置 X (cm)</label><input type="number" id="posXInput" value="${Math.round(item.x)}"></div>
+      <div class="field"><label>位置 Y (cm)</label><input type="number" id="posYInput" value="${Math.round(item.y)}"></div>
+    </div>
+    <button class="btn-block btn-copy" id="copyBtn">📋 复制此家具</button>
+    <button class="btn-block btn-danger" id="deleteBtn">🗑️ 删除此家具</button>
+    <div class="hint">
+      <b>操作提示</b><br>
+      · 移动：拖动家具 · Shift+拖拽 = 轴锁<br>
+      · 旋转：拖手柄 / ←→键 / 输入角度<br>
+      · Shift+旋转 = 吸附 90° · Shift+←→ = 15°<br>
+      · 删除：Delete · 复制：Ctrl+D
+    </div>`;
+
+  document.getElementById('widthInput').addEventListener('change', e => {
+    pushUndo();
+    item.width = clamp(parseFloat(e.target.value) || MIN_FURNITURE_SIZE, MIN_FURNITURE_SIZE, MAX_CANVAS_SIZE);
+    render(); debouncedSave();
+  });
+  document.getElementById('depthInput').addEventListener('change', e => {
+    pushUndo();
+    item.depth = clamp(parseFloat(e.target.value) || MIN_FURNITURE_SIZE, MIN_FURNITURE_SIZE, MAX_CANVAS_SIZE);
+    render(); debouncedSave();
+  });
+  document.getElementById('rotationInput').addEventListener('change', e => {
+    pushUndo();
+    item.rotation = ((parseFloat(e.target.value) || 0) + 360) % 360;
+    updateInspector(); render(); debouncedSave();
+  });
+  document.getElementById('posXInput').addEventListener('change', e => {
+    pushUndo();
+    item.x = parseFloat(e.target.value) || 0;
+    render(); debouncedSave();
+  });
+  document.getElementById('posYInput').addEventListener('change', e => {
+    pushUndo();
+    item.y = parseFloat(e.target.value) || 0;
+    render(); debouncedSave();
+  });
+  document.getElementById('copyBtn').addEventListener('click', copySelected);
+  document.getElementById('deleteBtn').addEventListener('click', deleteSelected);
+}
+
+function updateStatusBar() {
+  countDisplay.textContent = `家具：${state.furniture.length} 个`;
+  const collidingSet = getCollidingSet();
+  if (collidingSet.size > 0) {
+    collisionDisplay.innerHTML = `<span class="warn">⚠️ ${collidingSet.size} 处碰撞/越界</span>`;
+  } else if (state.furniture.length > 0) {
+    collisionDisplay.innerHTML = `<span class="ok">✓ 无碰撞</span>`;
+  } else {
+    collisionDisplay.textContent = '';
+  }
+}
+
+function updateScaleDisplay() {
+  const pxPerM = Math.round(viewState.scale * 100);
+  scaleDisplay.textContent = `缩放：1m = ${pxPerM}px`;
+}
+
+function updateUI() {
+  updateInspector();
+  updateStatusBar();
+  updateUndoRedoButtons();
+}
+
+// ============================================================
+//  Undo/Redo 模块
+// ============================================================
+const MAX_HISTORY = 50;
+const undoStack = [];
+const redoStack = [];
+
+function snapshotState() {
+  return JSON.parse(JSON.stringify({
+    rooms: state.rooms,
+    furniture: state.furniture,
+  }));
+}
+
+function pushUndo() {
+  undoStack.push(snapshotState());
+  if (undoStack.length > MAX_HISTORY) undoStack.shift();
+  redoStack.length = 0;
+  updateUndoRedoButtons();
+}
+
+function undo() {
+  if (undoStack.length === 0) return;
+  redoStack.push(snapshotState());
+  const prev = undoStack.pop();
+  state.rooms = prev.rooms;
+  state.furniture = prev.furniture;
+  state.selectedId = null;
+  state.selectedWallId = null;
+  render();
+  updateUI();
+  debouncedSave();
+}
+
+function redo() {
+  if (redoStack.length === 0) return;
+  undoStack.push(snapshotState());
+  const next = redoStack.pop();
+  state.rooms = next.rooms;
+  state.furniture = next.furniture;
+  state.selectedId = null;
+  state.selectedWallId = null;
+  render();
+  updateUI();
+  debouncedSave();
+}
+
+function updateUndoRedoButtons() {
+  const undoBtn = document.getElementById('undoBtn');
+  const redoBtn = document.getElementById('redoBtn');
+  if (undoBtn) undoBtn.style.opacity = undoStack.length === 0 ? '0.4' : '1';
+  if (redoBtn) redoBtn.style.opacity = redoStack.length === 0 ? '0.4' : '1';
+}
+
+// ============================================================
+//  Storage 模块：持久化
+// ============================================================
+let saveTimer = null;
+function debouncedSave() {
+  if (saveTimer) clearTimeout(saveTimer);
+  saveTimer = setTimeout(save, SAVE_DEBOUNCE_MS);
+}
+
+function save() {
+  try {
+    const data = { rooms: state.rooms, furniture: state.furniture, version: 1 };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  } catch (e) { console.warn('保存失败', e); }
+}
+
+function load() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return false;
+    const data = JSON.parse(raw);
+    state.rooms = data.rooms || [];
+    state.furniture = data.furniture || [];
+    state.selectedId = null;
+    state.selectedWallId = null;
+    // 确保所有墙都有 openings 数组
+    for (const room of state.rooms) {
+      for (const wall of room.walls) {
+        if (!wall.openings) wall.openings = [];
+      }
+    }
+    return true;
+  } catch (e) { return false; }
+}
+
+function exportJSON() {
+  const data = { rooms: state.rooms, furniture: state.furniture, version: 1 };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const now = new Date();
+  const ts = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}-${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}`;
+  a.href = url;
+  a.download = `layout-${ts}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function importJSON(file) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const data = JSON.parse(e.target.result);
+      pushUndo();
+      state.rooms = data.rooms || [];
+      state.furniture = data.furniture || [];
+      state.selectedId = null;
+      state.selectedWallId = null;
+      // 确保所有墙都有 openings 数组
+      for (const room of state.rooms) {
+        for (const wall of room.walls) {
+          if (!wall.openings) wall.openings = [];
+        }
+      }
+      render();
+      updateUI();
+      debouncedSave();
+    } catch (err) {
+      alert('导入失败：文件格式错误');
+    }
+  };
+  reader.readAsText(file);
+}
+
+function exportPNG() {
+  render();
+  canvas.toBlob(blob => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `layout-${Date.now()}.png`;
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+}
+
+// ============================================================
+//  模板户型
+// ============================================================
+function loadTemplate() {
+  pushUndo();
+  const idx = state.rooms.length % TEMPLATES.length;
+  const tpl = TEMPLATES[idx];
+  const room = {
+    id: generateId(),
+    name: tpl.name,
+    walls: tpl.rooms[0].walls.map(w => ({ ...w, id: generateId() }))
+  };
+  state.rooms.push(room);
+  // 居中视图到模板
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const w of room.walls) {
+    minX = Math.min(minX, w.x1, w.x2);
+    minY = Math.min(minY, w.y1, w.y2);
+    maxX = Math.max(maxX, w.x1, w.x2);
+    maxY = Math.max(maxY, w.y1, w.y2);
+  }
+  const cx = (minX + maxX) / 2;
+  const cy = (minY + maxY) / 2;
+  const rect = canvasWrapper.getBoundingClientRect();
+  viewState.panX = rect.width / 2 - cx * viewState.scale;
+  viewState.panY = rect.height / 2 - cy * viewState.scale;
+  render();
+  updateUI();
+  debouncedSave();
+}
+
+// ============================================================
+//  事件绑定
+// ============================================================
+function bindEvents() {
+  canvas.addEventListener('mousedown', onMouseDown);
+  canvas.addEventListener('mousemove', onMouseMove);
+  window.addEventListener('mouseup', onMouseUp);
+  canvas.addEventListener('wheel', onWheel, { passive: false });
+  canvas.addEventListener('dblclick', onDblClick);
+  document.addEventListener('keydown', onKeyDown);
+  document.addEventListener('keyup', onKeyUp);
+  window.addEventListener('resize', resizeCanvas);
+
+  // 工具按钮
+  document.querySelectorAll('.tool-btn[data-tool]').forEach(btn => {
+    btn.addEventListener('click', () => setTool(btn.dataset.tool));
+  });
+
+  // 吸附开关
+  document.getElementById('snapToggle').addEventListener('click', () => {
+    state.snapEnabled = !state.snapEnabled;
+    document.getElementById('snapSwitch').classList.toggle('on', state.snapEnabled);
+  });
+
+  // 碰撞模式开关（允许重叠 = warn 模式）
+  document.getElementById('collisionToggle').addEventListener('click', () => {
+    state.collisionMode = state.collisionMode === 'block' ? 'warn' : 'block';
+    document.getElementById('collisionSwitch').classList.toggle('on', state.collisionMode === 'warn');
+    render();
+    updateStatusBar();
+  });
+
+  // 模板户型
+  document.getElementById('templateBtn').addEventListener('click', loadTemplate);
+
+  // 清空
+  document.getElementById('clearBtn').addEventListener('click', () => {
+    if (confirm('确定清空所有家具和房间吗？')) {
+      pushUndo();
+      state.rooms = [];
+      state.furniture = [];
+      state.selectedId = null;
+      interaction.currentRoomWalls = [];
+      interaction.wallStart = null;
+      interaction.wallFirstPoint = null;
+      render();
+      updateUI();
+      debouncedSave();
+    }
+  });
+
+  // 撤销/重做
+  document.getElementById('undoBtn').addEventListener('click', undo);
+  document.getElementById('redoBtn').addEventListener('click', redo);
+
+  // 导出 PNG
+  document.getElementById('exportPngBtn').addEventListener('click', exportPNG);
+
+  // 导出 JSON
+  document.getElementById('exportJsonBtn').addEventListener('click', exportJSON);
+
+  // 导入 JSON
+  document.getElementById('importJsonBtn').addEventListener('click', () => {
+    document.getElementById('fileInput').click();
+  });
+  document.getElementById('fileInput').addEventListener('change', e => {
+    if (e.target.files[0]) importJSON(e.target.files[0]);
+    e.target.value = '';
+  });
+}
+
+// ============================================================
+//  初始化
+// ============================================================
+function init() {
+  renderFurniturePanel();
+  bindEvents();
+  initCanvas();
+}
+
+function initCanvas() {
+  // 等待布局就绪后再初始化画布
+  const rect = canvasWrapper.getBoundingClientRect();
+  if (rect.width === 0 || rect.height === 0) {
+    requestAnimationFrame(initCanvas);
+    return;
+  }
+
+  resizeCanvas();
+  initView();
+
+  // 尝试加载本地存储
+  if (load()) {
+    // 已有数据，居中到第一个房间
+    if (state.rooms.length > 0) {
+      const room = state.rooms[0];
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const w of room.walls) {
+        minX = Math.min(minX, w.x1, w.x2);
+        minY = Math.min(minY, w.y1, w.y2);
+        maxX = Math.max(maxX, w.x1, w.x2);
+        maxY = Math.max(maxY, w.y1, w.y2);
+      }
+      const cx = (minX + maxX) / 2;
+      const cy = (minY + maxY) / 2;
+      const rect2 = canvasWrapper.getBoundingClientRect();
+      viewState.panX = rect2.width / 2 - cx * viewState.scale;
+      viewState.panY = rect2.height / 2 - cy * viewState.scale;
+    }
+  }
+
+  updateScaleDisplay();
+  render();
+  updateUI();
+}
+
+init();
+</script>
+</body>
+</html>

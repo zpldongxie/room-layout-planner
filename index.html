@@ -40,7 +40,7 @@
 
   .canvas-wrapper { flex: 1; position: relative; overflow: hidden; background: #f0f4f8; }
   #canvas { display: block; cursor: default; }
-  #canvas.wall-mode { cursor: crosshair; }
+  #canvas.wall-mode, #canvas.rect-mode { cursor: crosshair; }
   #canvas.dragging { cursor: grabbing; }
   #canvas.panning { cursor: grab; }
 
@@ -184,7 +184,7 @@
   <div class="sidebar" id="sidebar">
     <div class="sidebar-title">🛋️ 家具库</div>
     <div class="furniture-grid" id="furnitureGrid"></div>
-    <div class="tip">💡 点击家具添加到画布<br>点击墙体可选中/删除/加门窗<br>画墙自动吸附网格<br>←/→ 键旋转 5° · Delete 删除<br>Shift+拖拽/画墙 = 水平垂直校正<br>Ctrl+Z 撤销 · Ctrl+Y 重做</div>
+    <div class="tip">💡 点击家具添加到画布<br>点击墙体可选中/删除/加门窗<br>画墙：按下拖动绘制，松手确认，双击闭合<br>▭ 画房间：斜对角拖动生成矩形房间<br>在既有墙上绘制会自动分割墙体<br>画墙中可随时 ↩ 撤销上一段<br>Shift+拖拽/画墙 = 水平垂直校正<br>Ctrl+Z 撤销 · Ctrl+Y 重做</div>
   </div>
 
   <!-- ===== 中间：画布 ===== -->
@@ -193,6 +193,7 @@
       <button class="mobile-toggle" id="toggleSidebarBtn" title="家具库">🛋️</button>
       <button class="tool-btn active" data-tool="select">🖱️ 选择</button>
       <button class="tool-btn" data-tool="wall">✏️ 画墙</button>
+      <button class="tool-btn" data-tool="rect">▭ 画房间</button>
       <div class="separator"></div>
       <label class="switch-label" id="snapToggle"><span class="switch on" id="snapSwitch"></span> 自动吸附</label>
       <label class="switch-label" id="collisionToggle"><span class="switch" id="collisionSwitch"></span> 允许重叠</label>
@@ -217,6 +218,7 @@
       <span id="scaleDisplay">缩放：1m = 50px</span>
       <span id="countDisplay">家具：0 个</span>
       <span id="collisionDisplay"></span>
+      <span id="hintDisplay"></span>
     </div>
   </div>
 
@@ -246,6 +248,10 @@ const STORAGE_KEY = 'room-layout-v3';
 const SAVE_DEBOUNCE_MS = 500;
 const ROTATE_STEP = 5;           // 键盘旋转步长 度
 const SHIFT_ROTATE_STEP = 15;    // Shift+方向键旋转步长 度
+const MIN_DRAG_PX = 20;          // 判定“点击/拖动”的屏幕阈值 px
+const MIN_WALL_LENGTH = 10;      // 画墙最短长度 cm
+const MIN_ROOM_SIZE = 50;        // 矩形房间最小边长 cm
+const MIN_WALL_SEGMENT = 10;     // 分割墙体后每段最小长度 cm
 
 // 家具类型元数据
 const FURNITURE_TYPES = [
@@ -313,8 +319,8 @@ const viewState = {
 
 // 交互状态
 const interaction = {
-  tool: 'select',           // 'select' | 'wall'
-  mode: 'idle',             // 'idle' | 'drag' | 'rotate' | 'pan' | 'wallDraw'
+  tool: 'select',           // 'select' | 'wall' | 'rect'
+  mode: 'idle',             // 'idle' | 'drag' | 'rotate' | 'pan' | 'wallDraw' | 'rectDraw'
   dragStart: null,          // 拖动起始屏幕坐标
   dragOffset: null,         // 拖动偏移（世界坐标）
   lastValidPos: null,       // block 模式下上一个合法位置
@@ -323,6 +329,11 @@ const interaction = {
   wallStart: null,          // 画墙起点（世界坐标）
   wallFirstPoint: null,     // 当前房间第一点（闭合检测用）
   currentRoomWalls: [],     // 当前正在画的房间的墙
+  targetRoomId: null,       // 起点所在房间 id（突出/缩进并入该房间）
+  wallDrawing: false,       // 是否正在拖动绘制墙段
+  rectStart: null,          // 矩形起点（世界坐标）
+  rectDrawing: false,       // 是否正在拖动绘制矩形房间
+  dragStartScreen: null,    // 按下时的屏幕坐标（区分点击/拖动）
   mouseWorld: { x: 0, y: 0 }, // 鼠标世界坐标
   spacePressed: false,
   shiftPressed: false,
@@ -410,6 +421,7 @@ function render() {
   drawWalls();
   drawCurrentRoomWalls();
   drawWallPreview();
+  drawRectPreview();
   drawFurniture();
   drawSelection();
 }
@@ -650,13 +662,23 @@ function drawCurrentRoomWalls() {
 
 function drawWallPreview() {
   if (interaction.tool !== 'wall' || !interaction.wallStart) return;
+
+  // 起点锚点
+  const s1 = toScreen(interaction.wallStart.x, interaction.wallStart.y);
+  ctx.fillStyle = '#3b82f6';
+  ctx.beginPath();
+  ctx.arc(s1.x, s1.y, 4, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
   // 网格吸附 + Shift 轴锁预览
   let endPos = snapToGrid({ x: interaction.mouseWorld.x, y: interaction.mouseWorld.y });
   if (interaction.shiftPressed) {
     endPos = applyAxisLock(interaction.wallStart, endPos);
   }
   const endX = endPos.x, endY = endPos.y;
-  const s1 = toScreen(interaction.wallStart.x, interaction.wallStart.y);
   const s2 = toScreen(endX, endY);
 
   ctx.strokeStyle = '#3b82f6';
@@ -698,6 +720,28 @@ function drawWallPreview() {
       ctx.fillText('闭合', fp.x, fp.y - 14);
     }
   }
+}
+
+// ▭ 画房间预览：斜对角矩形
+function drawRectPreview() {
+  if (interaction.tool !== 'rect' || !interaction.rectDrawing || !interaction.rectStart) return;
+  const p2 = snapToGrid({ x: interaction.mouseWorld.x, y: interaction.mouseWorld.y });
+  const p1 = interaction.rectStart;
+  const minX = Math.min(p1.x, p2.x), maxX = Math.max(p1.x, p2.x);
+  const minY = Math.min(p1.y, p2.y), maxY = Math.max(p1.y, p2.y);
+  const s1 = toScreen(minX, minY);
+  const s2 = toScreen(maxX, maxY);
+  ctx.strokeStyle = '#3b82f6';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([6, 4]);
+  ctx.strokeRect(s1.x, s1.y, s2.x - s1.x, s2.y - s1.y);
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#3b82f6';
+  ctx.font = '12px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'bottom';
+  ctx.fillText(`${Math.round(maxX - minX)}cm`, (s1.x + s2.x) / 2, s1.y - 6);
+  ctx.fillText(`${Math.round(maxY - minY)}cm`, s2.x + 8, (s1.y + s2.y) / 2);
 }
 
 // 获取旋转矩形的四个角点（世界坐标）
@@ -1152,6 +1196,98 @@ function deleteOpening(index) {
   debouncedSave();
 }
 
+// 将墙体在指定点分割为两段（点须位于墙体内部且离两端点足够远）
+function splitWallAtPoint(px, py) {
+  let bestWall = null, bestRoom = null;
+  let bestDist = WALL_HIT_THRESHOLD_CM;
+  for (const room of state.rooms) {
+    for (const wall of room.walls) {
+      const d = distPointToSegment(px, py, wall.x1, wall.y1, wall.x2, wall.y2);
+      if (d < bestDist) { bestDist = d; bestWall = wall; bestRoom = room; }
+    }
+  }
+  if (!bestWall) return;
+  const wall = bestWall;
+  const L = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
+  if (L < MIN_WALL_SEGMENT * 2) return;
+  // 仅当分割点投影位于墙体内部（0.05~0.95）时才分割，避免端点/墙外误切
+  const t = ((px - wall.x1) * (wall.x2 - wall.x1) + (py - wall.y1) * (wall.y2 - wall.y1)) / (L * L);
+  if (t < 0.05 || t > 0.95) return;
+  const La = Math.hypot(px - wall.x1, py - wall.y1);
+  const Lb = Math.hypot(wall.x2 - px, wall.y2 - py);
+  if (La < MIN_WALL_SEGMENT || Lb < MIN_WALL_SEGMENT) return;
+
+  // 门窗开口按中心位置分配到对应分段
+  const oa = [], ob = [];
+  for (const op of (wall.openings || [])) {
+    const center = op.pos * L;
+    if (center <= La) oa.push({ ...op, pos: La > 0 ? clamp(center / La, 0, 1) : 0 });
+    else ob.push({ ...op, pos: Lb > 0 ? clamp((center - La) / Lb, 0, 1) : 0 });
+  }
+
+  const idx = bestRoom.walls.indexOf(wall);
+  bestRoom.walls.splice(idx, 1,
+    { ...createWall(wall.x1, wall.y1, px, py, wall.thickness), openings: oa },
+    { ...createWall(px, py, wall.x2, wall.y2, wall.thickness), openings: ob }
+  );
+  if (state.selectedWallId === wall.id) state.selectedWallId = null;
+}
+
+// 起点若在既有墙体上，返回其所属房间 id（用于把突出/缩进并入该房间）
+function findRoomAtPoint(p) {
+  let bestRoom = null, bestDist = WALL_HIT_THRESHOLD_CM;
+  for (const room of state.rooms) {
+    for (const wall of room.walls) {
+      const d = distPointToSegment(p.x, p.y, wall.x1, wall.y1, wall.x2, wall.y2);
+      if (d < bestDist) { bestDist = d; bestRoom = room; }
+    }
+  }
+  return bestRoom ? bestRoom.id : null;
+}
+
+// ▭ 画房间：按下起点，斜对角拖动，松手生成矩形房间
+function handleRectPress(pos) {
+  if (interaction.rectDrawing) return;
+  interaction.rectStart = snapToGrid({ x: interaction.mouseWorld.x, y: interaction.mouseWorld.y });
+  interaction.rectDrawing = true;
+  interaction.mode = 'rectDraw';
+  interaction.dragStartScreen = { x: pos.x, y: pos.y };
+  canvas.classList.add('dragging');
+  render();
+}
+
+function handleRectRelease(pos) {
+  if (!interaction.rectDrawing) return;
+  interaction.rectDrawing = false;
+  interaction.mode = 'idle';
+  canvas.classList.remove('dragging');
+  if (!interaction.rectStart) { render(); return; }
+  const p2 = snapToGrid({ x: interaction.mouseWorld.x, y: interaction.mouseWorld.y });
+  const p1 = interaction.rectStart;
+  interaction.rectStart = null;
+  const minX = Math.min(p1.x, p2.x), maxX = Math.max(p1.x, p2.x);
+  const minY = Math.min(p1.y, p2.y), maxY = Math.max(p1.y, p2.y);
+  if (maxX - minX < MIN_ROOM_SIZE || maxY - minY < MIN_ROOM_SIZE) { render(); return; }
+
+  pushUndo();
+  const walls = [
+    createWall(minX, minY, maxX, minY, DEFAULT_WALL_THICKNESS),
+    createWall(maxX, minY, maxX, maxY, DEFAULT_WALL_THICKNESS),
+    createWall(maxX, maxY, minX, maxY, DEFAULT_WALL_THICKNESS),
+    createWall(minX, maxY, minX, minY, DEFAULT_WALL_THICKNESS),
+  ];
+  const room = { id: generateId(), name: '房间' + (state.rooms.length + 1), walls };
+  state.rooms.push(room);
+  // 矩形角点若落在既有墙体上，自动分割
+  for (const w of walls) {
+    splitWallAtPoint(w.x1, w.y1);
+    splitWallAtPoint(w.x2, w.y2);
+  }
+  debouncedSave();
+  render();
+  updateUI();
+}
+
 function onMouseDown(e) {
   const pos = getMousePos(e);
   interaction.mouseWorld = toWorld(pos.x, pos.y);
@@ -1168,7 +1304,9 @@ function onMouseDown(e) {
   if (e.button !== 0) return;
 
   if (interaction.tool === 'wall') {
-    handleWallMouseDown();
+    handleWallPress(pos);
+  } else if (interaction.tool === 'rect') {
+    handleRectPress(pos);
   } else {
     handleSelectMouseDown(pos);
   }
@@ -1182,13 +1320,43 @@ function snapToGrid(wp) {
   };
 }
 
-function handleWallMouseDown() {
-  let rawWorld = { x: interaction.mouseWorld.x, y: interaction.mouseWorld.y };
-  let wp = snapToGrid(rawWorld);
+// 画墙：按下确定/沿用锚点并开始拖动（墙体在松手时确认）
+function handleWallPress(pos) {
+  if (interaction.wallDrawing) return;
+  const wp = snapToGrid({ x: interaction.mouseWorld.x, y: interaction.mouseWorld.y });
+  // 尚未提交任何墙段时，按下位置作为新起点；否则沿用上一段终点继续
+  if (interaction.currentRoomWalls.length === 0) {
+    interaction.wallStart = wp;
+    interaction.wallFirstPoint = wp;
+  }
+  interaction.wallDrawing = true;
+  interaction.mode = 'wallDraw';
+  interaction.dragStartScreen = { x: pos.x, y: pos.y };
+  canvas.classList.add('dragging');
+  render();
+}
+
+// 松手确认墙体：拖动距离足够才生成墙段
+function handleWallRelease(pos) {
+  if (!interaction.wallDrawing || !interaction.wallStart) return;
+  interaction.wallDrawing = false;
+  interaction.mode = 'idle';
+  canvas.classList.remove('dragging');
+
+  // 视为点击（几乎没有移动）：不生成墙，仅保留/更新起点
+  if (interaction.dragStartScreen) {
+    const moved = Math.hypot(pos.x - interaction.dragStartScreen.x, pos.y - interaction.dragStartScreen.y);
+    if (moved < MIN_DRAG_PX) { render(); return; }
+  }
+
+  let wp = snapToGrid({ x: interaction.mouseWorld.x, y: interaction.mouseWorld.y });
+  if (interaction.shiftPressed) {
+    wp = applyAxisLock(interaction.wallStart, wp);
+  }
 
   // 闭合检测（同时检查原始坐标和吸附后坐标）
   if (interaction.wallFirstPoint && interaction.currentRoomWalls.length >= 2) {
-    const rawDist = Math.hypot(rawWorld.x - interaction.wallFirstPoint.x, rawWorld.y - interaction.wallFirstPoint.y);
+    const rawDist = Math.hypot(interaction.mouseWorld.x - interaction.wallFirstPoint.x, interaction.mouseWorld.y - interaction.wallFirstPoint.y);
     const snappedDist = Math.hypot(wp.x - interaction.wallFirstPoint.x, wp.y - interaction.wallFirstPoint.y);
     if (rawDist < CLOSE_DISTANCE || snappedDist < CLOSE_DISTANCE) {
       closeRoom();
@@ -1196,22 +1364,22 @@ function handleWallMouseDown() {
     }
   }
 
-  // Shift 轴锁：校正为水平/垂直
-  if (interaction.wallStart && interaction.shiftPressed) {
-    wp = applyAxisLock(interaction.wallStart, wp);
-  }
+  const start = { x: interaction.wallStart.x, y: interaction.wallStart.y };
+  if (Math.hypot(wp.x - start.x, wp.y - start.y) < MIN_WALL_LENGTH) { render(); return; }
 
-  if (interaction.wallStart) {
-    // 生成一段墙
-    const wall = createWall(interaction.wallStart.x, interaction.wallStart.y, wp.x, wp.y, DEFAULT_WALL_THICKNESS);
-    interaction.currentRoomWalls.push(wall);
-    interaction.wallStart = wp;
-  } else {
-    // 开始画墙
-    interaction.wallStart = wp;
-    interaction.wallFirstPoint = wp;
+  pushUndo();
+  // 本会话的第一段：若起点落在既有墙体上，则依附到该房间（突出/缩进）
+  if (interaction.currentRoomWalls.length === 0) {
+    interaction.targetRoomId = findRoomAtPoint(start);
   }
+  const wall = createWall(start.x, start.y, wp.x, wp.y, DEFAULT_WALL_THICKNESS);
+  interaction.currentRoomWalls.push(wall);
+  // 端点落在既有墙上时自动分割墙体
+  splitWallAtPoint(start.x, start.y);
+  splitWallAtPoint(wp.x, wp.y);
+  interaction.wallStart = { x: wp.x, y: wp.y };
   render();
+  updateStatusBar();
 }
 
 function closeRoom() {
@@ -1226,17 +1394,30 @@ function closeRoom() {
   }
   if (interaction.currentRoomWalls.length >= 3) {
     pushUndo();
-    const room = {
-      id: generateId(),
-      name: '房间' + (state.rooms.length + 1),
-      walls: [...interaction.currentRoomWalls]
-    };
-    state.rooms.push(room);
+    // 闭合墙端点若落在既有墙体上，自动分割
+    for (const w of interaction.currentRoomWalls) {
+      splitWallAtPoint(w.x1, w.y1);
+      splitWallAtPoint(w.x2, w.y2);
+    }
+    const targetRoom = interaction.targetRoomId ? state.rooms.find(r => r.id === interaction.targetRoomId) : null;
+    if (targetRoom) {
+      // 突出/缩进部分并入起点所在的房间
+      targetRoom.walls.push(...interaction.currentRoomWalls);
+    } else {
+      const room = {
+        id: generateId(),
+        name: '房间' + (state.rooms.length + 1),
+        walls: [...interaction.currentRoomWalls]
+      };
+      state.rooms.push(room);
+    }
     debouncedSave();
   }
   interaction.wallStart = null;
   interaction.wallFirstPoint = null;
   interaction.currentRoomWalls = [];
+  interaction.targetRoomId = null;
+  interaction.wallDrawing = false;
   setTool('select');
   render();
   updateUI();
@@ -1349,6 +1530,8 @@ function onMouseMove(e) {
 
   if (interaction.tool === 'wall' && interaction.wallStart) {
     render();
+  } else if (interaction.tool === 'rect' && interaction.rectDrawing) {
+    render();
   }
 }
 
@@ -1364,6 +1547,16 @@ function checkItemCollision(item) {
 }
 
 function onMouseUp(e) {
+  const rect = canvas.getBoundingClientRect();
+  const screenPos = {
+    x: (e.clientX !== undefined ? e.clientX : 0) - rect.left,
+    y: (e.clientY !== undefined ? e.clientY : 0) - rect.top
+  };
+  if (interaction.mode === 'wallDraw') {
+    handleWallRelease(screenPos);
+  } else if (interaction.mode === 'rectDraw') {
+    handleRectRelease(screenPos);
+  }
   if (interaction.mode === 'drag' && state.selectedId) {
     const item = state.furniture.find(f => f.id === state.selectedId);
     if (item && interaction.lastValidPos) {
@@ -1440,8 +1633,14 @@ function onKeyDown(e) {
         interaction.wallStart = null;
         interaction.wallFirstPoint = null;
         interaction.currentRoomWalls = [];
+        interaction.targetRoomId = null;
+        interaction.wallDrawing = false;
         setTool('select');
       }
+    }
+    if (interaction.tool === 'rect') {
+      interaction.rectStart = null;
+      interaction.rectDrawing = false;
     }
     render();
     updateUI();
@@ -1512,9 +1711,15 @@ function synthMouse(touch, button) {
 
 function onTouchStart(e) {
   if (e.touches.length === 2) {
-    // 双指：先结束可能的单指拖拽
+    // 双指：先结束可能的单指拖拽或画墙
     if (interaction.mode === 'drag' || interaction.mode === 'rotate') {
       onMouseUp({ button: 0, preventDefault() {}, stopPropagation() {} });
+    }
+    if (interaction.mode === 'wallDraw' || interaction.mode === 'rectDraw') {
+      interaction.wallDrawing = false;
+      interaction.rectDrawing = false;
+      interaction.mode = 'idle';
+      canvas.classList.remove('dragging');
     }
     interaction.mode = 'pan';
     canvas.classList.add('panning');
@@ -1586,7 +1791,13 @@ function onTouchEnd(e) {
       e.preventDefault();
       return;
     }
-    onMouseUp({ button: 0, preventDefault() {}, stopPropagation() {} });
+    const t = e.changedTouches && e.changedTouches[0] ? e.changedTouches[0] : null;
+    onMouseUp({
+      clientX: t ? t.clientX : 0,
+      clientY: t ? t.clientY : 0,
+      button: 0,
+      preventDefault() {}, stopPropagation() {}
+    });
     e.preventDefault();
   } else if (e.touches.length === 1 && pinchState) {
     // 从双指变为单指：结束缩放，等待新的单指操作
@@ -1665,17 +1876,27 @@ function setTool(tool) {
     btn.classList.toggle('active', btn.dataset.tool === tool);
   });
   canvas.classList.toggle('wall-mode', tool === 'wall');
+  canvas.classList.toggle('rect-mode', tool === 'rect');
   if (tool !== 'wall') {
-    interaction.wallStart = null;
-    interaction.wallFirstPoint = null;
     // 未闭合的墙也保存为房间
     if (interaction.currentRoomWalls.length >= 3) {
       closeRoom();
     } else {
       interaction.currentRoomWalls = [];
     }
-    render();
+    interaction.wallStart = null;
+    interaction.wallFirstPoint = null;
+    interaction.targetRoomId = null;
+    interaction.wallDrawing = false;
   }
+  if (tool !== 'rect') {
+    interaction.rectStart = null;
+    interaction.rectDrawing = false;
+  }
+  interaction.mode = 'idle';
+  canvas.classList.remove('dragging');
+  render();
+  updateUI();
 }
 
 // ============================================================
@@ -1748,9 +1969,12 @@ function updateInspector() {
       </div>
       <div class="hint">
         <b>操作提示</b><br>
-        · 画墙：选画墙工具 → 点击起点 → 点击终点<br>
+        · 画墙：按下拖动绘制，松手确认一段<br>
         · 画墙时自动吸附网格（开启吸附时）<br>
+        · ▭ 画房间：斜对角拖动生成矩形房间<br>
+        · 在既有墙上画墙会自动分割墙体<br>
         · 闭合：终点靠近起点（绿色圈）或双击<br>
+        · 画墙中可随时 ↩ 撤销上一段墙<br>
         · 选中墙体：点击墙体 → Delete 删除<br>
         · 选中墙体后可加门窗开口<br>
         · 移动：选中后拖动家具<br>
@@ -1827,6 +2051,18 @@ function updateStatusBar() {
   } else {
     collisionDisplay.textContent = '';
   }
+  const hint = document.getElementById('hintDisplay');
+  if (hint) {
+    if (interaction.tool === 'wall') {
+      hint.textContent = interaction.currentRoomWalls.length >= 2
+        ? '拖动画墙 · 双击/回到起点闭合 · 撤销可删上段'
+        : '按下并拖动绘制墙体，松手确认';
+    } else if (interaction.tool === 'rect') {
+      hint.textContent = '斜对角拖动生成矩形房间';
+    } else {
+      hint.textContent = '';
+    }
+  }
 }
 
 function updateScaleDisplay() {
@@ -1851,6 +2087,10 @@ function snapshotState() {
   return JSON.parse(JSON.stringify({
     rooms: state.rooms,
     furniture: state.furniture,
+    currentRoomWalls: interaction.currentRoomWalls,
+    wallStart: interaction.wallStart,
+    wallFirstPoint: interaction.wallFirstPoint,
+    targetRoomId: interaction.targetRoomId,
   }));
 }
 
@@ -1861,12 +2101,18 @@ function pushUndo() {
   updateUndoRedoButtons();
 }
 
-function undo() {
-  if (undoStack.length === 0) return;
-  redoStack.push(snapshotState());
-  const prev = undoStack.pop();
-  state.rooms = prev.rooms;
-  state.furniture = prev.furniture;
+function restoreSnapshot(snap) {
+  state.rooms = snap.rooms;
+  state.furniture = snap.furniture;
+  interaction.currentRoomWalls = snap.currentRoomWalls || [];
+  interaction.wallStart = snap.wallStart || null;
+  interaction.wallFirstPoint = snap.wallFirstPoint || null;
+  interaction.targetRoomId = snap.targetRoomId || null;
+  interaction.wallDrawing = false;
+  interaction.rectDrawing = false;
+  interaction.rectStart = null;
+  interaction.mode = 'idle';
+  canvas.classList.remove('dragging');
   state.selectedId = null;
   state.selectedWallId = null;
   render();
@@ -1874,17 +2120,16 @@ function undo() {
   debouncedSave();
 }
 
+function undo() {
+  if (undoStack.length === 0) return;
+  redoStack.push(snapshotState());
+  restoreSnapshot(undoStack.pop());
+}
+
 function redo() {
   if (redoStack.length === 0) return;
   undoStack.push(snapshotState());
-  const next = redoStack.pop();
-  state.rooms = next.rooms;
-  state.furniture = next.furniture;
-  state.selectedId = null;
-  state.selectedWallId = null;
-  render();
-  updateUI();
-  debouncedSave();
+  restoreSnapshot(redoStack.pop());
 }
 
 function updateUndoRedoButtons() {
@@ -2062,6 +2307,10 @@ function bindEvents() {
       interaction.currentRoomWalls = [];
       interaction.wallStart = null;
       interaction.wallFirstPoint = null;
+      interaction.targetRoomId = null;
+      interaction.wallDrawing = false;
+      interaction.rectStart = null;
+      interaction.rectDrawing = false;
       render();
       updateUI();
       debouncedSave();

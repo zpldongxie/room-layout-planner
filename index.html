@@ -43,6 +43,7 @@
   #canvas.wall-mode, #canvas.rect-mode { cursor: crosshair; }
   #canvas.dragging { cursor: grabbing; }
   #canvas.panning { cursor: grab; }
+  #canvas.pan-tool { cursor: grab; }
 
   .status-bar { display: flex; justify-content: space-between; align-items: center; padding: 6px 14px; background: #f8fafc; border-top: 1px solid #e2e8f0; font-size: 11px; color: #94a3b8; flex-shrink: 0; gap: 10px; }
   .status-bar .warn { color: #ef4444; }
@@ -194,6 +195,7 @@
       <button class="tool-btn active" data-tool="select">🖱️ 选择</button>
       <button class="tool-btn" data-tool="wall">✏️ 画墙</button>
       <button class="tool-btn" data-tool="rect">▭ 画房间</button>
+      <button class="tool-btn" data-tool="pan">✋ 平移</button>
       <div class="separator"></div>
       <label class="switch-label" id="snapToggle"><span class="switch on" id="snapSwitch"></span> 自动吸附</label>
       <label class="switch-label" id="collisionToggle"><span class="switch" id="collisionSwitch"></span> 允许重叠</label>
@@ -1303,6 +1305,15 @@ function onMouseDown(e) {
 
   if (e.button !== 0) return;
 
+  // 平移工具：左键拖拽即平移
+  if (interaction.tool === 'pan') {
+    interaction.mode = 'pan';
+    interaction.dragStart = pos;
+    canvas.classList.add('panning');
+    e.preventDefault();
+    return;
+  }
+
   if (interaction.tool === 'wall') {
     handleWallPress(pos);
   } else if (interaction.tool === 'rect') {
@@ -1547,6 +1558,8 @@ function checkItemCollision(item) {
 }
 
 function onMouseUp(e) {
+  // 修复：无画布交互时松手无需处理，避免重建面板 DOM 导致按钮 click 事件丢失
+  if (interaction.mode === 'idle') return;
   const rect = canvas.getBoundingClientRect();
   const screenPos = {
     x: (e.clientX !== undefined ? e.clientX : 0) - rect.left,
@@ -1751,6 +1764,14 @@ function onTouchStart(e) {
     }
     lastTapTime = Date.now();
     lastTapPos = { x: px, y: py };
+    // 平移工具：单指拖拽即平移
+    if (interaction.tool === 'pan') {
+      interaction.mode = 'pan';
+      interaction.dragStart = { x: px, y: py };
+      canvas.classList.add('panning');
+      e.preventDefault();
+      return;
+    }
     onMouseDown(synthMouse(t, 0));
     e.preventDefault();
   }
@@ -1877,6 +1898,7 @@ function setTool(tool) {
   });
   canvas.classList.toggle('wall-mode', tool === 'wall');
   canvas.classList.toggle('rect-mode', tool === 'rect');
+  canvas.classList.toggle('pan-tool', tool === 'pan');
   if (tool !== 'wall') {
     // 未闭合的墙也保存为房间
     if (interaction.currentRoomWalls.length >= 3) {
